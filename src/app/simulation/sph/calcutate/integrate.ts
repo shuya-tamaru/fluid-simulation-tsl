@@ -6,6 +6,7 @@ export function computeIntegratePass(
   positionsBuffer: StorageBufferType,
   velocitiesBuffer: StorageBufferType,
   pressureForcesBuffer: StorageBufferType,
+  viscosityForcesBuffer: StorageBufferType,
   mass: number,
   delta: number
 ): THREE.TSL.ShaderNodeFn<[]> {
@@ -13,10 +14,11 @@ export function computeIntegratePass(
     const pos = positionsBuffer.element(instanceIndex);
     const vel = velocitiesBuffer.element(instanceIndex);
     const pressureForce = pressureForcesBuffer.element(instanceIndex);
+    const viscosityForce = viscosityForcesBuffer.element(instanceIndex);
     const invMass = float(1.0)
       .div(max(float(mass), float(1e-8)))
       .toVar();
-    const acceleration = pressureForce.mul(invMass).toVar();
+    const acceleration = pressureForce.add(viscosityForce).mul(invMass).toVar();
     const newVel = vel.add(acceleration.mul(float(delta))).toVar();
     const newPos = pos.add(newVel.mul(float(delta))).toVar();
     vel.assign(newVel);

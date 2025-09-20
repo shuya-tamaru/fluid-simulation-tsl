@@ -14,6 +14,7 @@ import { computeDensityPass } from "./calcutate/dencity";
 import { computePressurePass } from "./calcutate/pressure";
 import { computePressureForcePass } from "./calcutate/pressureForce";
 import { computeIntegratePass } from "./calcutate/integrate";
+import { computeViscosityPass } from "./calcutate/viscosity";
 
 export class Particles {
   private boxWidth!: number;
@@ -25,6 +26,7 @@ export class Particles {
   private densitiesBuffer!: StorageBufferType;
   private pressuresBuffer!: StorageBufferType;
   private pressureForcesBuffer!: StorageBufferType;
+  private viscosityForcesBuffer!: StorageBufferType;
 
   private renderer!: THREE.WebGPURenderer;
 
@@ -45,6 +47,8 @@ export class Particles {
   private spiky!: number;
   private restDensity!: number;
   private pressureStiffness!: number;
+  private viscosity!: number;
+  private viscosityMu!: number;
 
   constructor(
     boxWidth: number,
@@ -70,12 +74,14 @@ export class Particles {
     this.pressureStiffness = 100;
     this.poly6Kernel = 315 / (64 * Math.PI * this.h9);
     this.spiky = -45 / (Math.PI * this.h6);
-
+    this.viscosity = 45 / (Math.PI * this.h6);
+    this.viscosityMu = 0.12;
     this.positionsBuffer = instancedArray(this.particleCount, "vec3");
     this.velocitiesBuffer = instancedArray(this.particleCount, "vec3");
     this.densitiesBuffer = instancedArray(this.particleCount, "float");
     this.pressuresBuffer = instancedArray(this.particleCount, "float");
     this.pressureForcesBuffer = instancedArray(this.particleCount, "vec3");
+    this.viscosityForcesBuffer = instancedArray(this.particleCount, "vec3");
   }
 
   public initialize() {
@@ -88,8 +94,6 @@ export class Particles {
   private initializeParticlePositions() {
     const init = Fn(() => {
       const pos = this.positionsBuffer.element(instanceIndex);
-      const vel = this.velocitiesBuffer.element(instanceIndex);
-      const density = this.densitiesBuffer.element(instanceIndex);
 
       const x = hash(instanceIndex.mul(1664525))
         .sub(0.5)
@@ -102,11 +106,8 @@ export class Particles {
         .mul(float(this.boxDepth));
 
       const initialPosition = vec3(x, y, z);
-      const initialVelocity = vec3(0, 0, 0);
 
       pos.assign(initialPosition);
-      vel.assign(initialVelocity);
-      density.assign(float(0.0));
     });
     const initCompute = init().compute(this.particleCount);
     this.renderer.computeAsync(initCompute);
@@ -192,11 +193,27 @@ export class Particles {
     this.renderer.computeAsync(pressureForceCompute);
   }
 
+  private computeViscosity() {
+    const viscosityCompute = computeViscosityPass(
+      this.positionsBuffer,
+      this.velocitiesBuffer,
+      this.densitiesBuffer,
+      this.viscosityForcesBuffer,
+      this.particleCount,
+      this.viscosity,
+      this.viscosityMu,
+      this.h,
+      this.mass
+    )().compute(this.particleCount);
+    this.renderer.computeAsync(viscosityCompute);
+  }
+
   private computeIntegrate() {
     const integrateCompute = computeIntegratePass(
       this.positionsBuffer,
       this.velocitiesBuffer,
       this.pressureForcesBuffer,
+      this.viscosityForcesBuffer,
       this.mass,
       this.delta
     )().compute(this.particleCount);
@@ -208,6 +225,7 @@ export class Particles {
     this.computeDensity();
     this.computePressure();
     this.computePressureForce();
+    this.computeViscosity();
     this.computeIntegrate();
   }
 }
