@@ -74,10 +74,10 @@ export class App {
     this.rendererManager.resize(this.width, this.height);
   }
 
-  private animate = async (): Promise<void> => {
+  private animate = (): void => {
     this.animationId = requestAnimationFrame(this.animate);
     this.controlsManager.update();
-    await this.particles.compute();
+    this.particles.compute();
     this.rendererManager.render(
       this.sceneManager.scene,
       this.cameraManager.camera

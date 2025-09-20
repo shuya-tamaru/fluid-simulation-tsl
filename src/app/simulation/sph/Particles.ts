@@ -11,6 +11,8 @@ import * as THREE from "three/webgpu";
 import type { StorageBufferType } from "../../types/BufferType";
 import { computeGravityPass } from "./calcutate/gravity";
 import { computeDensityPass } from "./calcutate/dencity";
+import { computePressurePass } from "./calcutate/pressure";
+import { computePressureForcePass } from "./calcutate/pressureForce";
 
 export class Particles {
   private boxWidth!: number;
@@ -20,6 +22,8 @@ export class Particles {
   private positionsBuffer!: StorageBufferType;
   private velocitiesBuffer!: StorageBufferType;
   private densitiesBuffer!: StorageBufferType;
+  private pressuresBuffer!: StorageBufferType;
+  private pressureForcesBuffer!: StorageBufferType;
 
   private renderer!: THREE.WebGPURenderer;
 
@@ -34,8 +38,12 @@ export class Particles {
   private h!: number;
   private h2!: number;
   private h3!: number;
+  private h6!: number;
   private h9!: number;
   private poly6Kernel!: number;
+  private spiky!: number;
+  private restDensity!: number;
+  private pressureStiffness!: number;
 
   constructor(
     boxWidth: number,
@@ -43,6 +51,8 @@ export class Particles {
     boxDepth: number,
     renderer: THREE.WebGPURenderer
   ) {
+    this.renderer = renderer;
+
     this.boxWidth = boxWidth;
     this.boxHeight = boxHeight;
     this.boxDepth = boxDepth;
@@ -53,13 +63,18 @@ export class Particles {
     this.h = 1.0;
     this.h2 = Math.pow(this.h, 2);
     this.h3 = Math.pow(this.h, 3);
+    this.h6 = Math.pow(this.h, 6);
     this.h9 = Math.pow(this.h, 9);
-
+    this.restDensity = 0.8;
+    this.pressureStiffness = 100;
     this.poly6Kernel = 315 / (64 * Math.PI * this.h9);
+    this.spiky = -45 / (Math.PI * this.h6);
+
     this.positionsBuffer = instancedArray(this.particleCount, "vec3");
     this.velocitiesBuffer = instancedArray(this.particleCount, "vec3");
     this.densitiesBuffer = instancedArray(this.particleCount, "float");
-    this.renderer = renderer;
+    this.pressuresBuffer = instancedArray(this.particleCount, "float");
+    this.pressureForcesBuffer = instancedArray(this.particleCount, "vec3");
   }
 
   public initialize() {
@@ -127,7 +142,7 @@ export class Particles {
     return this.positionsBuffer;
   }
 
-  private async computeGravity() {
+  private computeGravity() {
     const gravityCompute = computeGravityPass(
       this.positionsBuffer,
       this.velocitiesBuffer,
@@ -139,7 +154,7 @@ export class Particles {
     )().compute(this.particleCount);
     this.renderer.computeAsync(gravityCompute);
   }
-  private async computeDensity() {
+  private computeDensity() {
     const densityCompute = computeDensityPass(
       this.positionsBuffer,
       this.densitiesBuffer,
@@ -151,8 +166,34 @@ export class Particles {
     this.renderer.computeAsync(densityCompute);
   }
 
-  public async compute() {
-    await this.computeGravity();
-    await this.computeDensity();
+  private computePressure() {
+    const pressureCompute = computePressurePass(
+      this.densitiesBuffer,
+      this.pressuresBuffer,
+      this.restDensity,
+      this.pressureStiffness
+    )().compute(this.particleCount);
+    this.renderer.computeAsync(pressureCompute);
+  }
+
+  private computePressureForce() {
+    const pressureForceCompute = computePressureForcePass(
+      this.positionsBuffer,
+      this.densitiesBuffer,
+      this.pressuresBuffer,
+      this.pressureForcesBuffer,
+      this.particleCount,
+      this.mass,
+      this.h,
+      this.spiky
+    )().compute(this.particleCount);
+    this.renderer.computeAsync(pressureForceCompute);
+  }
+
+  public compute() {
+    this.computeGravity();
+    this.computeDensity();
+    this.computePressure();
+    this.computePressureForce();
   }
 }
