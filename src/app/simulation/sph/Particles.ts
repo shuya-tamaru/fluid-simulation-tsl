@@ -15,11 +15,12 @@ import { computePressurePass } from "./calcutate/pressure";
 import { computePressureForcePass } from "./calcutate/pressureForce";
 import { computeIntegratePass } from "./calcutate/integrate";
 import { computeViscosityPass } from "./calcutate/viscosity";
+import type { UniformTypeOf } from "../../types/UniformType";
 
 export class Particles {
-  private boxWidth!: number;
-  private boxHeight!: number;
-  private boxDepth!: number;
+  private boxWidth!: UniformTypeOf<number>;
+  private boxHeight!: UniformTypeOf<number>;
+  private boxDepth!: UniformTypeOf<number>;
   private particleCount!: number;
   private positionsBuffer!: StorageBufferType;
   private velocitiesBuffer!: StorageBufferType;
@@ -51,9 +52,9 @@ export class Particles {
   private viscosityMu!: number;
 
   constructor(
-    boxWidth: number,
-    boxHeight: number,
-    boxDepth: number,
+    boxWidth: UniformTypeOf<number>,
+    boxHeight: UniformTypeOf<number>,
+    boxDepth: UniformTypeOf<number>,
     renderer: THREE.WebGPURenderer
   ) {
     this.renderer = renderer;

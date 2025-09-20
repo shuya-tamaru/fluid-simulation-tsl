@@ -1,15 +1,16 @@
 import { abs, float, Fn, If, instanceIndex, sign, vec3 } from "three/tsl";
 import * as THREE from "three/webgpu";
 import type { StorageBufferType } from "../../../types/BufferType";
+import type { UniformTypeOf } from "../../../types/UniformType";
 
 export function computeGravityPass(
   positionsBuffer: StorageBufferType,
   velocitiesBuffer: StorageBufferType,
   delta: number,
   restitution: number,
-  boxWidth: number,
-  boxHeight: number,
-  boxDepth: number
+  boxWidth: UniformTypeOf<number>,
+  boxHeight: UniformTypeOf<number>,
+  boxDepth: UniformTypeOf<number>
 ): THREE.TSL.ShaderNodeFn<[]> {
   return Fn(() => {
     const pos = positionsBuffer.element(instanceIndex);
@@ -19,20 +20,20 @@ export function computeGravityPass(
     const newPos = pos.add(vel.mul(float(delta))).toVar();
     const newVel = vel.add(gravity.mul(float(delta))).toVar();
 
-    If(abs(newPos.x).greaterThan(float(boxWidth / 2)), () => {
-      newPos.x.assign(float(boxWidth / 2).mul(sign(newPos.x)));
+    If(abs(newPos.x).greaterThan(boxWidth.div(2)), () => {
+      newPos.x.assign(boxWidth.div(2).mul(sign(newPos.x)));
       const dumpVel = newVel.x.mul(-1.0).mul(float(1.0 - restitution));
       newVel.x.assign(dumpVel);
     });
 
-    If(abs(newPos.y).greaterThan(float(boxHeight / 2)), () => {
-      newPos.y.assign(float(boxHeight / 2).mul(sign(newPos.y)));
+    If(abs(newPos.y).greaterThan(boxHeight.div(2)), () => {
+      newPos.y.assign(boxHeight.div(2).mul(sign(newPos.y)));
       const dumpVel = newVel.y.mul(-1.0).mul(float(1.0 - restitution));
       newVel.y.assign(dumpVel);
     });
 
-    If(abs(newPos.z).greaterThan(float(boxDepth / 2)), () => {
-      newPos.z.assign(float(boxDepth / 2).mul(sign(newPos.z)));
+    If(abs(newPos.z).greaterThan(boxDepth.div(2)), () => {
+      newPos.z.assign(boxDepth.div(2).mul(sign(newPos.z)));
       const dumpVel = newVel.z.mul(-1.0).mul(float(1.0 - restitution));
       newVel.z.assign(dumpVel);
     });

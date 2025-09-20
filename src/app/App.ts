@@ -5,6 +5,7 @@ import { ControlsManager } from "./core/Controls";
 import { LightingManager } from "./core/Lighting";
 import { BoxBoundary } from "./simulation/boundaries/BoxBoundary";
 import { Particles } from "./simulation/sph/Particles";
+import { ParamsControls } from "./utils/ParamsControls";
 
 export class App {
   private sceneManager!: SceneManager;
@@ -14,6 +15,7 @@ export class App {
   private lightingManager!: LightingManager;
   private boxBoundary!: BoxBoundary;
   private particles!: Particles;
+  private paramsControls!: ParamsControls;
 
   private width: number;
   private height: number;
@@ -31,6 +33,7 @@ export class App {
 
   private initializeApp(): void {
     this.initializeManagers();
+
     this.setupScene();
     this.setupEventListeners();
     this.startAnimation();
@@ -46,13 +49,19 @@ export class App {
     );
     this.lightingManager = new LightingManager();
     this.boxBoundary = new BoxBoundary();
+    const {
+      width: widthNode,
+      height: heightNode,
+      depth: depthNode,
+    } = this.boxBoundary.getSizesNodes();
     this.particles = new Particles(
-      this.boxBoundary.getSizes().width,
-      this.boxBoundary.getSizes().height,
-      this.boxBoundary.getSizes().depth,
+      widthNode,
+      heightNode,
+      depthNode,
       this.rendererManager.renderer
     );
     this.particles.initialize();
+    this.paramsControls = new ParamsControls(this.boxBoundary);
   }
 
   private setupScene(): void {

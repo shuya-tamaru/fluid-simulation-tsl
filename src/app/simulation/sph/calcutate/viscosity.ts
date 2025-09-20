@@ -1,4 +1,4 @@
-import { float, Fn, If, instanceIndex, Loop, pow, uint, vec3 } from "three/tsl";
+import { float, Fn, If, instanceIndex, Loop, uint, vec3 } from "three/tsl";
 import * as THREE from "three/webgpu";
 import type { StorageBufferType } from "../../../types/BufferType";
 
