@@ -5,7 +5,7 @@ export class CameraManager {
 
   constructor(aspect: number) {
     this.camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000);
-    this.camera.position.set(0, 0, 10);
+    this.camera.position.set(10, 20, 20);
   }
 
   updateAspect(aspect: number): void {

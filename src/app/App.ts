@@ -4,6 +4,7 @@ import { CameraManager } from "./core/Camera";
 import { RendererManager } from "./core/Renderer";
 import { ControlsManager } from "./core/Controls";
 import { LightingManager } from "./core/Lighting";
+import { BoxBoundary } from "./simulation/boundaries/BoxBoundary";
 
 export class App {
   private sceneManager!: SceneManager;
@@ -11,6 +12,7 @@ export class App {
   private rendererManager!: RendererManager;
   private controlsManager!: ControlsManager;
   private lightingManager!: LightingManager;
+  private boxBoundary!: BoxBoundary;
 
   private width: number;
   private height: number;
@@ -38,6 +40,7 @@ export class App {
       this.rendererManager.renderer.domElement
     );
     this.lightingManager = new LightingManager();
+    this.boxBoundary = new BoxBoundary();
   }
 
   private setupScene(): void {
@@ -47,6 +50,7 @@ export class App {
     const sphereMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
     const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
     this.sceneManager.add(sphere);
+    this.boxBoundary.addToScene(this.sceneManager.scene);
   }
 
   private setupEventListeners(): void {
