@@ -5,6 +5,7 @@ import { RendererManager } from "./core/Renderer";
 import { ControlsManager } from "./core/Controls";
 import { LightingManager } from "./core/Lighting";
 import { BoxBoundary } from "./simulation/boundaries/BoxBoundary";
+import { Particles } from "./simulation/sph/Particles";
 
 export class App {
   private sceneManager!: SceneManager;
@@ -13,6 +14,7 @@ export class App {
   private controlsManager!: ControlsManager;
   private lightingManager!: LightingManager;
   private boxBoundary!: BoxBoundary;
+  private particles!: Particles;
 
   private width: number;
   private height: number;
@@ -25,13 +27,17 @@ export class App {
     this.height = window.innerHeight;
     this.aspect = this.width / this.height;
 
+    this.initializeApp();
+  }
+
+  private initializeApp(): void {
     this.initializeManagers();
     this.setupScene();
     this.setupEventListeners();
     this.startAnimation();
   }
 
-  private initializeManagers(): void {
+  private initializeManagers() {
     this.sceneManager = new SceneManager();
     this.cameraManager = new CameraManager(this.aspect);
     this.rendererManager = new RendererManager(this.width, this.height);
@@ -41,16 +47,19 @@ export class App {
     );
     this.lightingManager = new LightingManager();
     this.boxBoundary = new BoxBoundary();
+    this.particles = new Particles(
+      this.boxBoundary.getSizes().width,
+      this.boxBoundary.getSizes().height,
+      this.boxBoundary.getSizes().depth,
+      this.rendererManager.renderer
+    );
+    this.particles.initialize();
   }
 
   private setupScene(): void {
     this.lightingManager.addToScene(this.sceneManager.scene);
-
-    const sphereGeometry = new THREE.SphereGeometry(1, 32, 32);
-    const sphereMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
-    const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
-    this.sceneManager.add(sphere);
     this.boxBoundary.addToScene(this.sceneManager.scene);
+    this.particles.addToScene(this.sceneManager.scene);
   }
 
   private setupEventListeners(): void {

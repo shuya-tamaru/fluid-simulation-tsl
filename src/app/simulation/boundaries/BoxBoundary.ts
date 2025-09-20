@@ -1,10 +1,10 @@
-import { abs, float, Fn, positionLocal } from "three/tsl";
 import * as THREE from "three/webgpu";
+import { abs, float, Fn, positionLocal } from "three/tsl";
 
 export class BoxBoundary {
-  public width!: number;
-  public height!: number;
-  public depth!: number;
+  private width!: number;
+  private height!: number;
+  private depth!: number;
 
   constructor() {
     this.width = 32;
@@ -51,5 +51,9 @@ export class BoxBoundary {
 
   public addToScene(scene: THREE.Scene): void {
     scene.add(this.createMesh());
+  }
+
+  public getSizes(): { width: number; height: number; depth: number } {
+    return { width: this.width, height: this.height, depth: this.depth };
   }
 }
