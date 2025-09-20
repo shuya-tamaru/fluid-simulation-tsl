@@ -78,6 +78,7 @@ export class App {
   private animate = (): void => {
     this.animationId = requestAnimationFrame(this.animate);
     this.controlsManager.update();
+    this.particles.compute();
     this.rendererManager.render(
       this.sceneManager.scene,
       this.cameraManager.camera
