@@ -1,0 +1,84 @@
+import * as THREE from "three/webgpu";
+import { SceneManager } from "./core/Scene";
+import { CameraManager } from "./core/Camera";
+import { RendererManager } from "./core/Renderer";
+import { ControlsManager } from "./core/Controls";
+import { LightingManager } from "./core/Lighting";
+
+export class App {
+  private sceneManager!: SceneManager;
+  private cameraManager!: CameraManager;
+  private rendererManager!: RendererManager;
+  private controlsManager!: ControlsManager;
+  private lightingManager!: LightingManager;
+
+  private width: number;
+  private height: number;
+  private aspect: number;
+
+  private animationId?: number;
+
+  constructor() {
+    this.width = window.innerWidth;
+    this.height = window.innerHeight;
+    this.aspect = this.width / this.height;
+
+    this.initializeManagers();
+    this.setupScene();
+    this.setupEventListeners();
+    this.startAnimation();
+  }
+
+  private initializeManagers(): void {
+    this.sceneManager = new SceneManager();
+    this.cameraManager = new CameraManager(this.aspect);
+    this.rendererManager = new RendererManager(this.width, this.height);
+    this.controlsManager = new ControlsManager(
+      this.cameraManager.camera,
+      this.rendererManager.renderer.domElement
+    );
+    this.lightingManager = new LightingManager();
+  }
+
+  private setupScene(): void {
+    this.lightingManager.addToScene(this.sceneManager.scene);
+
+    const sphereGeometry = new THREE.SphereGeometry(1, 32, 32);
+    const sphereMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+    const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+    this.sceneManager.add(sphere);
+  }
+
+  private setupEventListeners(): void {
+    window.addEventListener("resize", this.handleResize.bind(this));
+  }
+
+  private handleResize(): void {
+    this.width = window.innerWidth;
+    this.height = window.innerHeight;
+    this.aspect = this.width / this.height;
+
+    this.cameraManager.updateAspect(this.aspect);
+    this.rendererManager.resize(this.width, this.height);
+  }
+
+  private animate = (): void => {
+    this.animationId = requestAnimationFrame(this.animate);
+    this.controlsManager.update();
+    this.rendererManager.render(
+      this.sceneManager.scene,
+      this.cameraManager.camera
+    );
+  };
+
+  private startAnimation(): void {
+    this.animate();
+  }
+
+  public dispose(): void {
+    if (this.animationId) {
+      cancelAnimationFrame(this.animationId);
+    }
+    window.removeEventListener("resize", this.handleResize);
+  }
+}
