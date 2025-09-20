@@ -6,19 +6,18 @@ import {
   instanceIndex,
   vec3,
   positionLocal,
-  If,
-  abs,
-  sign,
 } from "three/tsl";
 import * as THREE from "three/webgpu";
+import type { StorageBufferType } from "../../types/BufferType";
+import { computeGravityPass } from "./calcutate/gravity";
 
 export class Particles {
   private boxWidth!: number;
   private boxHeight!: number;
   private boxDepth!: number;
   private particleCount!: number;
-  private positionsBuffer!: THREE.TSL.ShaderNodeObject<THREE.StorageBufferNode>;
-  private velocitiesBuffer!: THREE.TSL.ShaderNodeObject<THREE.StorageBufferNode>;
+  private positionsBuffer!: StorageBufferType;
+  private velocitiesBuffer!: StorageBufferType;
 
   private renderer!: THREE.WebGPURenderer;
 
@@ -110,37 +109,20 @@ export class Particles {
     return this.positionsBuffer;
   }
 
+  private computeGravity() {
+    const gravityCompute = computeGravityPass(
+      this.positionsBuffer,
+      this.velocitiesBuffer,
+      this.delta,
+      this.restitution,
+      this.boxWidth,
+      this.boxHeight,
+      this.boxDepth
+    )().compute(this.particleCount);
+    this.renderer.computeAsync(gravityCompute);
+  }
+
   public compute() {
-    const compute = Fn(() => {
-      const pos = this.positionsBuffer.element(instanceIndex);
-      const vel = this.velocitiesBuffer.element(instanceIndex);
-      const gravity = vec3(0, -9.8, 0);
-
-      const newPos = pos.add(vel.mul(float(this.delta))).toVar();
-      const newVel = vel.add(gravity.mul(float(this.delta))).toVar();
-
-      If(abs(newPos.x).greaterThan(float(this.boxWidth / 2)), () => {
-        newPos.x.assign(float(this.boxWidth / 2).mul(sign(newPos.x)));
-        const dumpVel = newVel.x.mul(-1.0).mul(float(1.0 - this.restitution));
-        newVel.x.assign(dumpVel);
-      });
-
-      If(abs(newPos.y).greaterThan(float(this.boxHeight / 2)), () => {
-        newPos.y.assign(float(this.boxHeight / 2).mul(sign(newPos.y)));
-        const dumpVel = newVel.y.mul(-1.0).mul(float(1.0 - this.restitution));
-        newVel.y.assign(dumpVel);
-      });
-
-      If(abs(newPos.z).greaterThan(float(this.boxDepth / 2)), () => {
-        newPos.z.assign(float(this.boxDepth / 2).mul(sign(newPos.z)));
-        const dumpVel = newVel.z.mul(-1.0).mul(float(1.0 - this.restitution));
-        newVel.z.assign(dumpVel);
-      });
-
-      vel.assign(newVel);
-      pos.assign(newPos);
-    });
-    const computeCompute = compute().compute(this.particleCount);
-    this.renderer.computeAsync(computeCompute);
+    this.computeGravity();
   }
 }
