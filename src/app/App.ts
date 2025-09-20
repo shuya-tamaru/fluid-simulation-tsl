@@ -1,4 +1,3 @@
-import * as THREE from "three/webgpu";
 import { SceneManager } from "./core/Scene";
 import { CameraManager } from "./core/Camera";
 import { RendererManager } from "./core/Renderer";
@@ -75,10 +74,10 @@ export class App {
     this.rendererManager.resize(this.width, this.height);
   }
 
-  private animate = (): void => {
+  private animate = async (): Promise<void> => {
     this.animationId = requestAnimationFrame(this.animate);
     this.controlsManager.update();
-    this.particles.compute();
+    await this.particles.compute();
     this.rendererManager.render(
       this.sceneManager.scene,
       this.cameraManager.camera

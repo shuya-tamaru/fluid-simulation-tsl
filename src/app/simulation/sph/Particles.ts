@@ -10,6 +10,7 @@ import {
 import * as THREE from "three/webgpu";
 import type { StorageBufferType } from "../../types/BufferType";
 import { computeGravityPass } from "./calcutate/gravity";
+import { computeDensityPass } from "./calcutate/dencity";
 
 export class Particles {
   private boxWidth!: number;
@@ -18,6 +19,7 @@ export class Particles {
   private particleCount!: number;
   private positionsBuffer!: StorageBufferType;
   private velocitiesBuffer!: StorageBufferType;
+  private densitiesBuffer!: StorageBufferType;
 
   private renderer!: THREE.WebGPURenderer;
 
@@ -27,7 +29,13 @@ export class Particles {
 
   //params
   private delta!: number;
-  public restitution!: number;
+  private restitution!: number;
+  private mass!: number;
+  private h!: number;
+  private h2!: number;
+  private h3!: number;
+  private h9!: number;
+  private poly6Kernel!: number;
 
   constructor(
     boxWidth: number,
@@ -38,11 +46,19 @@ export class Particles {
     this.boxWidth = boxWidth;
     this.boxHeight = boxHeight;
     this.boxDepth = boxDepth;
-    this.particleCount = 1000;
+    this.particleCount = 100;
     this.delta = 1 / 60;
     this.restitution = 0.1;
+    this.mass = 0.2;
+    this.h = 1.0;
+    this.h2 = Math.pow(this.h, 2);
+    this.h3 = Math.pow(this.h, 3);
+    this.h9 = Math.pow(this.h, 9);
+
+    this.poly6Kernel = 315 / (64 * Math.PI * this.h9);
     this.positionsBuffer = instancedArray(this.particleCount, "vec3");
     this.velocitiesBuffer = instancedArray(this.particleCount, "vec3");
+    this.densitiesBuffer = instancedArray(this.particleCount, "float");
     this.renderer = renderer;
   }
 
@@ -57,6 +73,7 @@ export class Particles {
     const init = Fn(() => {
       const pos = this.positionsBuffer.element(instanceIndex);
       const vel = this.velocitiesBuffer.element(instanceIndex);
+      const density = this.densitiesBuffer.element(instanceIndex);
 
       const x = hash(instanceIndex.mul(1664525))
         .sub(0.5)
@@ -73,6 +90,7 @@ export class Particles {
 
       pos.assign(initialPosition);
       vel.assign(initialVelocity);
+      density.assign(float(0.0));
     });
     const initCompute = init().compute(this.particleCount);
     this.renderer.computeAsync(initCompute);
@@ -85,7 +103,7 @@ export class Particles {
   private createMaterial() {
     this.sphereMaterial = new THREE.MeshBasicNodeMaterial({
       color: 0xff00ff,
-      // side: THREE.DoubleSide,
+      side: THREE.DoubleSide,
     });
 
     this.sphereMaterial.positionNode = positionLocal.add(
@@ -109,7 +127,7 @@ export class Particles {
     return this.positionsBuffer;
   }
 
-  private computeGravity() {
+  private async computeGravity() {
     const gravityCompute = computeGravityPass(
       this.positionsBuffer,
       this.velocitiesBuffer,
@@ -121,8 +139,20 @@ export class Particles {
     )().compute(this.particleCount);
     this.renderer.computeAsync(gravityCompute);
   }
+  private async computeDensity() {
+    const densityCompute = computeDensityPass(
+      this.positionsBuffer,
+      this.densitiesBuffer,
+      this.particleCount,
+      this.poly6Kernel,
+      this.h2,
+      this.mass
+    )().compute(this.particleCount);
+    this.renderer.computeAsync(densityCompute);
+  }
 
-  public compute() {
-    this.computeGravity();
+  public async compute() {
+    await this.computeGravity();
+    await this.computeDensity();
   }
 }

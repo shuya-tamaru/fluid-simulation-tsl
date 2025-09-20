@@ -14,7 +14,7 @@ export function computeGravityPass(
   return Fn(() => {
     const pos = positionsBuffer.element(instanceIndex);
     const vel = velocitiesBuffer.element(instanceIndex);
-    const gravity = vec3(0, -9.8, 0);
+    const gravity = vec3(0, -9.8, 0).toVar();
 
     const newPos = pos.add(vel.mul(float(delta))).toVar();
     const newVel = vel.add(gravity.mul(float(delta))).toVar();
