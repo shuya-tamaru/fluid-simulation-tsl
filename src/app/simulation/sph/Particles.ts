@@ -6,6 +6,12 @@ import {
   instanceIndex,
   vec3,
   positionLocal,
+  normalLocal,
+  clamp,
+  If,
+  mix,
+  max,
+  smoothstep,
 } from "three/tsl";
 import * as THREE from "three/webgpu";
 import type { StorageBufferType } from "../../types/BufferType";
@@ -50,6 +56,7 @@ export class Particles {
   private pressureStiffness!: number;
   private viscosity!: number;
   private viscosityMu!: number;
+  private maxSpeed!: number;
 
   constructor(
     boxWidth: UniformTypeOf<number>,
@@ -62,7 +69,7 @@ export class Particles {
     this.boxWidth = boxWidth;
     this.boxHeight = boxHeight;
     this.boxDepth = boxDepth;
-    this.particleCount = 1000;
+    this.particleCount = 10000;
     this.delta = 1 / 60;
     this.restitution = 0.1;
     this.mass = 0.2;
@@ -77,6 +84,8 @@ export class Particles {
     this.spiky = -45 / (Math.PI * this.h6);
     this.viscosity = 45 / (Math.PI * this.h6);
     this.viscosityMu = 0.12;
+    this.maxSpeed = 10;
+
     this.positionsBuffer = instancedArray(this.particleCount, "vec3");
     this.velocitiesBuffer = instancedArray(this.particleCount, "vec3");
     this.densitiesBuffer = instancedArray(this.particleCount, "float");
@@ -115,7 +124,7 @@ export class Particles {
   }
 
   private createGeometry() {
-    this.sphereGeometry = new THREE.SphereGeometry(0.1, 10, 10);
+    this.sphereGeometry = new THREE.SphereGeometry(0.15, 10, 10);
   }
 
   private createMaterial() {
@@ -127,6 +136,59 @@ export class Particles {
     this.sphereMaterial.positionNode = positionLocal.add(
       this.positionsBuffer.toAttribute()
     );
+    this.updateMaterialColorNode();
+  }
+
+  // @ts-ignore
+  private getColorByVelocity = Fn(([speed]) => {
+    const t = clamp(
+      speed.div(float(this.maxSpeed)),
+      float(0.0),
+      float(1.0)
+    ).toVar();
+    const deep = vec3(0.0, 0.05, 0.2);
+    const mid = vec3(0.0, 0.6, 0.8);
+    const foam = vec3(0.5, 0.55, 1.0);
+
+    const color = vec3(0.0).toVar();
+
+    If(t.lessThan(float(0.7)), () => {
+      const k = t.div(float(0.7));
+      color.assign(mix(deep, mid, k));
+    }).Else(() => {
+      const k = t.sub(float(0.7)).div(float(0.3));
+      color.assign(mix(mid, foam, k));
+    });
+
+    return color;
+  });
+
+  private updateMaterialColorNode() {
+    this.sphereMaterial.colorNode = Fn(() => {
+      const normal = normalLocal.toVar();
+      const lightDir = vec3(0.3, 1.0, 0.5).normalize().toVar();
+      const ambient = float(1.0).toVar();
+      const diffuse = max(normal.dot(lightDir), float(0.0)).toVar();
+      const speed = this.velocitiesBuffer
+        .element(instanceIndex)
+        .length()
+        .toVar();
+      // @ts-ignore
+      const baseColor = this.getColorByVelocity(speed);
+      const t = clamp(
+        speed.mul(float(1.5)).add(float(1.0).div(float(this.maxSpeed))),
+        float(0.0),
+        float(1.0)
+      ).toVar();
+      const emissiveGain = float(2.8).toVar();
+      const emissive = baseColor
+        .mul(emissiveGain.mul(0.4).mul(smoothstep(float(0.6), float(1.0), t)))
+        .toVar();
+      const shaded = baseColor
+        .mul(ambient.add(diffuse.mul(float(4.2))))
+        .toVar();
+      return shaded;
+    })();
   }
 
   private createMesh() {
