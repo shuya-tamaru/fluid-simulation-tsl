@@ -69,22 +69,22 @@ export class Particles {
     this.boxWidth = boxWidth;
     this.boxHeight = boxHeight;
     this.boxDepth = boxDepth;
-    this.particleCount = 10000;
+    this.particleCount = 1000;
     this.delta = 1 / 60;
     this.restitution = 0.1;
-    this.mass = 0.2;
+    this.mass = 0.4;
     this.h = 1.0;
     this.h2 = Math.pow(this.h, 2);
     this.h3 = Math.pow(this.h, 3);
     this.h6 = Math.pow(this.h, 6);
     this.h9 = Math.pow(this.h, 9);
     this.restDensity = 0.8;
-    this.pressureStiffness = 100;
+    this.pressureStiffness = 50;
     this.poly6Kernel = 315 / (64 * Math.PI * this.h9);
     this.spiky = -45 / (Math.PI * this.h6);
     this.viscosity = 45 / (Math.PI * this.h6);
     this.viscosityMu = 0.12;
-    this.maxSpeed = 10;
+    this.maxSpeed = 20;
 
     this.positionsBuffer = instancedArray(this.particleCount, "vec3");
     this.velocitiesBuffer = instancedArray(this.particleCount, "vec3");
@@ -215,7 +215,8 @@ export class Particles {
       this.restitution,
       this.boxWidth,
       this.boxHeight,
-      this.boxDepth
+      this.boxDepth,
+      this.mass
     )().compute(this.particleCount);
     this.renderer.computeAsync(gravityCompute);
   }
