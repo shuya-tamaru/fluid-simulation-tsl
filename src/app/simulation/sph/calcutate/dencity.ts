@@ -8,6 +8,7 @@ export function computeDensityPass(
   particleCount: number,
   poly6Kernel: number,
   h2: number,
+  h6: number,
   mass: number
 ): THREE.TSL.ShaderNodeFn<[]> {
   return Fn(() => {
@@ -31,6 +32,8 @@ export function computeDensityPass(
 
       j.assign(j.add(uint(1)));
     });
+
+    rho0.addAssign(float(mass).mul(float(poly6Kernel)).mul(float(h6)));
     density.assign(rho0);
   });
 }

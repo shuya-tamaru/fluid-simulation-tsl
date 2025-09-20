@@ -13,6 +13,7 @@ import { computeGravityPass } from "./calcutate/gravity";
 import { computeDensityPass } from "./calcutate/dencity";
 import { computePressurePass } from "./calcutate/pressure";
 import { computePressureForcePass } from "./calcutate/pressureForce";
+import { computeIntegratePass } from "./calcutate/integrate";
 
 export class Particles {
   private boxWidth!: number;
@@ -56,7 +57,7 @@ export class Particles {
     this.boxWidth = boxWidth;
     this.boxHeight = boxHeight;
     this.boxDepth = boxDepth;
-    this.particleCount = 100;
+    this.particleCount = 1000;
     this.delta = 1 / 60;
     this.restitution = 0.1;
     this.mass = 0.2;
@@ -161,6 +162,7 @@ export class Particles {
       this.particleCount,
       this.poly6Kernel,
       this.h2,
+      this.h6,
       this.mass
     )().compute(this.particleCount);
     this.renderer.computeAsync(densityCompute);
@@ -190,10 +192,22 @@ export class Particles {
     this.renderer.computeAsync(pressureForceCompute);
   }
 
+  private computeIntegrate() {
+    const integrateCompute = computeIntegratePass(
+      this.positionsBuffer,
+      this.velocitiesBuffer,
+      this.pressureForcesBuffer,
+      this.mass,
+      this.delta
+    )().compute(this.particleCount);
+    this.renderer.computeAsync(integrateCompute);
+  }
+
   public compute() {
     this.computeGravity();
     this.computeDensity();
     this.computePressure();
     this.computePressureForce();
+    this.computeIntegrate();
   }
 }
