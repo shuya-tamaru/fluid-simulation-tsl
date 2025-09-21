@@ -25,6 +25,7 @@ import type { UniformTypeOf } from "../../types/UniformType";
 import { computeCellIndicesPass } from "./calcutate/cellIndices";
 import { computeCellStartIndicesPass } from "./calcutate/cellStartIndices";
 import { computeReorderParticlePass } from "./calcutate/reorderParticle";
+import { computeResetCalcPass } from "./calcutate/resetCalc";
 
 export class Particles {
   private boxWidth!: UniformTypeOf<number>;
@@ -237,6 +238,14 @@ export class Particles {
     return this.positionsBuffer;
   }
 
+  private computeResetCalc() {
+    const resetCalcCompute = computeResetCalcPass(
+      this.offsetsBuffer,
+      this.cellCountsBuffer
+    )().compute(this.totalCellCount);
+    this.renderer.computeAsync(resetCalcCompute);
+  }
+
   private computeCellIndices() {
     const cellIndicesCompute = computeCellIndicesPass(
       this.cellIndicesBuffer,
@@ -352,6 +361,7 @@ export class Particles {
   }
 
   public compute() {
+    this.computeResetCalc();
     this.computeCellIndices();
     this.computeCellStartIndices();
     this.computeReorderParticle();
