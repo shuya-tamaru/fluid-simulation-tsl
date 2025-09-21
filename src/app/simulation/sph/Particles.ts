@@ -22,6 +22,7 @@ import { computeIntegratePass } from "./calcutate/integrate";
 import { computeViscosityPass } from "./calcutate/viscosity";
 import type { UniformTypeOf } from "../../types/UniformType";
 import { computeCellIndicesPass } from "./calcutate/cellIndices";
+import { computeCellStartIndicesPass } from "./calcutate/cellStartIndices";
 
 export class Particles {
   private boxWidth!: UniformTypeOf<number>;
@@ -31,6 +32,7 @@ export class Particles {
 
   private cellIndicesBuffer!: StorageBufferType;
   private cellCountsBuffer!: StorageBufferType;
+  private cellStartIndicesBuffer!: StorageBufferType;
   private positionsBuffer!: StorageBufferType;
   private velocitiesBuffer!: StorageBufferType;
   private densitiesBuffer!: StorageBufferType;
@@ -118,7 +120,8 @@ export class Particles {
 
   private initializeParticleBuffers() {
     this.cellIndicesBuffer = instancedArray(this.particleCount, "uint");
-    this.cellCountsBuffer = instancedArray(this.particleCount, "uint");
+    this.cellCountsBuffer = instancedArray(this.totalCellCount, "uint");
+    this.cellStartIndicesBuffer = instancedArray(this.totalCellCount, "uint");
     this.positionsBuffer = instancedArray(this.particleCount, "vec3");
     this.velocitiesBuffer = instancedArray(this.particleCount, "vec3");
     this.densitiesBuffer = instancedArray(this.particleCount, "float");
@@ -240,6 +243,14 @@ export class Particles {
     )().compute(this.particleCount);
     this.renderer.computeAsync(cellIndicesCompute);
   }
+  private computeCellStartIndices() {
+    const cellStartIndicesCompute = computeCellStartIndicesPass(
+      this.cellStartIndicesBuffer,
+      this.cellCountsBuffer,
+      this.totalCellCount
+    )().compute(this.totalCellCount);
+    this.renderer.computeAsync(cellStartIndicesCompute);
+  }
 
   private computeGravity() {
     const gravityCompute = computeGravityPass(
@@ -320,6 +331,7 @@ export class Particles {
 
   public compute() {
     this.computeCellIndices();
+    this.computeCellStartIndices();
     this.computeGravity();
     this.computeDensity();
     this.computePressure();
