@@ -1,4 +1,4 @@
-import { Fn, instanceIndex, uint } from "three/tsl";
+import { atomicAdd, Fn, instanceIndex, uint } from "three/tsl";
 import * as THREE from "three/webgpu";
 import type { StorageBufferType } from "../../../types/BufferType";
 import { positionToCellIndex } from "../utils/positionToCellIndex";
@@ -17,7 +17,7 @@ export function computeCellIndicesPass(
 ): THREE.TSL.ShaderNodeFn<[]> {
   return Fn(() => {
     const pos = positionsBuffer.element(instanceIndex);
-    const cellIndex_i = cellIndicesBuffer.element(instanceIndex).toVar();
+    const cellIndex_i = cellIndicesBuffer.element(instanceIndex);
 
     const cellIndex = positionToCellIndex(
       pos,
@@ -31,7 +31,6 @@ export function computeCellIndicesPass(
     )();
 
     cellIndex_i.assign(cellIndex);
-    const cellCount_i = cellCountsBuffer.element(cellIndex).toVar();
-    cellCount_i.assign(cellCount_i.add(uint(1)));
+    atomicAdd(cellCountsBuffer.element(cellIndex), uint(1));
   });
 }

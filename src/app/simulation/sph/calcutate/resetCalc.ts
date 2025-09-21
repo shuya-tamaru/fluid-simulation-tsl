@@ -7,7 +7,7 @@ export function computeResetCalcPass(
   cellCountsBuffer: StorageBufferType
 ): THREE.TSL.ShaderNodeFn<[]> {
   return Fn(() => {
-    cellCountsBuffer.element(instanceIndex).assign(uint(0));
     atomicStore(offsetsBuffer.element(instanceIndex), uint(0));
+    atomicStore(cellCountsBuffer.element(instanceIndex), uint(0));
   });
 }

@@ -1,6 +1,6 @@
 import type { StorageBufferType } from "../../../types/BufferType";
 import * as THREE from "three/webgpu";
-import { Fn, Loop, uint } from "three/tsl";
+import { atomicLoad, Fn, Loop, uint } from "three/tsl";
 
 export function computeCellStartIndicesPass(
   cellStartIndicesBuffer: StorageBufferType,
@@ -14,7 +14,8 @@ export function computeCellStartIndicesPass(
 
     Loop(i.lessThan(totalCellCount), () => {
       cellStartIndicesBuffer.element(i).assign(acc);
-      acc.assign(acc.add(cellCountsBuffer.element(i)));
+      const cellCount_i = atomicLoad(cellCountsBuffer.element(i));
+      acc.assign(acc.add(cellCount_i));
       i.assign(i.add(uint(1)));
     });
   });
