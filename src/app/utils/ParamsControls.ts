@@ -1,13 +1,16 @@
 import GUI from "lil-gui";
 import type { BoxBoundary } from "../simulation/boundaries/BoxBoundary";
+import type { Particles } from "../simulation/sph/Particles";
 
 export class ParamsControls {
   private gui: GUI;
   private boxBoundary: BoxBoundary;
+  private particles: Particles;
 
-  constructor(boxBoundary: BoxBoundary) {
+  constructor(boxBoundary: BoxBoundary, particles: Particles) {
     this.gui = new GUI();
     this.boxBoundary = boxBoundary;
+    this.particles = particles;
     this.initialize();
   }
 
@@ -31,6 +34,12 @@ export class ParamsControls {
           this.boxBoundary.getSizes().height,
           value
         );
+      });
+    this.gui
+      .add(this.particles, "particleCount", 1000, 20000, 1000)
+      .name("Particle Count")
+      .onChange(async (value: number) => {
+        await this.particles.updateParticleCount(value);
       });
   }
 }
