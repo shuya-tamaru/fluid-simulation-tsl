@@ -21,12 +21,25 @@ import { computePressureForcePass } from "./calcutate/pressureForce";
 import { computeIntegratePass } from "./calcutate/integrate";
 import { computeViscosityPass } from "./calcutate/viscosity";
 import type { UniformTypeOf } from "../../types/UniformType";
+import { computeCellIndicesPass } from "./calcutate/cellIndices";
+import { computeCellStartIndicesPass } from "./calcutate/cellStartIndices";
+import { computeReorderParticlePass } from "./calcutate/reorderParticle";
+import { computeResetCalcPass } from "./calcutate/resetCalc";
+import { computeSwitchPositionPass } from "./calcutate/switchPosition";
 
 export class Particles {
   private boxWidth!: UniformTypeOf<number>;
   private boxHeight!: UniformTypeOf<number>;
   private boxDepth!: UniformTypeOf<number>;
-  private particleCount!: number;
+  public particleCount!: number;
+
+  private cellIndicesBuffer!: StorageBufferType;
+  private cellCountsBuffer!: StorageBufferType;
+  private cellStartIndicesBuffer!: StorageBufferType;
+  private reorderedPositionsBuffer!: StorageBufferType;
+  private reorderedVelocitiesBuffer!: StorageBufferType;
+  private offsetsBuffer!: StorageBufferType;
+
   private positionsBuffer!: StorageBufferType;
   private velocitiesBuffer!: StorageBufferType;
   private densitiesBuffer!: StorageBufferType;
@@ -35,6 +48,7 @@ export class Particles {
   private viscosityForcesBuffer!: StorageBufferType;
 
   private renderer!: THREE.WebGPURenderer;
+  private scene!: THREE.Scene;
 
   private sphereGeometry!: THREE.SphereGeometry;
   private sphereMaterial!: THREE.MeshBasicNodeMaterial;
@@ -56,6 +70,14 @@ export class Particles {
   private viscosity!: number;
   private viscosityMu!: number;
   private maxSpeed!: number;
+  private cellSize!: number;
+  private cellCountX!: number;
+  private cellCountY!: number;
+  private cellCountZ!: number;
+  private totalCellCount!: number;
+  private xMinCoord!: number;
+  private yMinCoord!: number;
+  private zMinCoord!: number;
 
   constructor(
     boxWidth: UniformTypeOf<number>,
@@ -68,7 +90,7 @@ export class Particles {
     this.boxWidth = boxWidth;
     this.boxHeight = boxHeight;
     this.boxDepth = boxDepth;
-    this.particleCount = 10000;
+    this.particleCount = 5000;
     this.delta = 1 / 60;
     this.restitution = 0.1;
     this.mass = 0.3;
@@ -84,7 +106,35 @@ export class Particles {
     this.viscosity = 45 / (Math.PI * this.h6);
     this.viscosityMu = 0.12;
     this.maxSpeed = 15;
+    //neighbor search
+    this.cellSize = this.h;
+    this.cellCountX = Math.floor(this.boxWidth.value / this.cellSize);
+    this.cellCountY = Math.floor(this.boxHeight.value / this.cellSize);
+    this.cellCountZ = Math.floor(this.boxDepth.value / this.cellSize);
+    this.totalCellCount = this.cellCountX * this.cellCountY * this.cellCountZ;
+    this.xMinCoord = -this.boxWidth.value / 2;
+    this.yMinCoord = -this.boxHeight.value / 2;
+    this.zMinCoord = -this.boxDepth.value / 2;
+  }
 
+  public async initialize() {
+    this.initializeParticleBuffers();
+    await this.initializeParticlePositions();
+    this.createGeometry();
+    this.createMaterial();
+    this.createMesh();
+  }
+
+  private initializeParticleBuffers() {
+    this.cellIndicesBuffer = instancedArray(this.particleCount, "uint");
+    this.cellCountsBuffer = instancedArray(
+      this.totalCellCount,
+      "uint"
+    ).toAtomic();
+    this.cellStartIndicesBuffer = instancedArray(this.totalCellCount, "uint");
+    this.offsetsBuffer = instancedArray(this.totalCellCount, "uint").toAtomic();
+    this.reorderedPositionsBuffer = instancedArray(this.particleCount, "vec3");
+    this.reorderedVelocitiesBuffer = instancedArray(this.particleCount, "vec3");
     this.positionsBuffer = instancedArray(this.particleCount, "vec3");
     this.velocitiesBuffer = instancedArray(this.particleCount, "vec3");
     this.densitiesBuffer = instancedArray(this.particleCount, "float");
@@ -93,14 +143,7 @@ export class Particles {
     this.viscosityForcesBuffer = instancedArray(this.particleCount, "vec3");
   }
 
-  public initialize() {
-    this.initializeParticlePositions();
-    this.createGeometry();
-    this.createMaterial();
-    this.createMesh();
-  }
-
-  private initializeParticlePositions() {
+  private async initializeParticlePositions() {
     const init = Fn(() => {
       const pos = this.positionsBuffer.element(instanceIndex);
 
@@ -119,7 +162,7 @@ export class Particles {
       pos.assign(initialPosition);
     });
     const initCompute = init().compute(this.particleCount);
-    this.renderer.computeAsync(initCompute);
+    await this.renderer.computeAsync(initCompute);
   }
 
   private createGeometry() {
@@ -190,11 +233,67 @@ export class Particles {
   }
 
   public addToScene(scene: THREE.Scene) {
+    this.scene = scene;
     scene.add(this.sphereMesh);
   }
 
   public getPositionsBuffer(): THREE.TSL.ShaderNodeObject<THREE.StorageBufferNode> {
     return this.positionsBuffer;
+  }
+
+  private computeResetCalc() {
+    const resetCalcCompute = computeResetCalcPass(
+      this.offsetsBuffer,
+      this.cellCountsBuffer
+    )().compute(this.totalCellCount);
+    this.renderer.computeAsync(resetCalcCompute);
+  }
+
+  private computeCellIndices() {
+    const cellIndicesCompute = computeCellIndicesPass(
+      this.cellIndicesBuffer,
+      this.cellCountsBuffer,
+      this.positionsBuffer,
+      this.cellSize,
+      this.cellCountX,
+      this.cellCountY,
+      this.cellCountZ,
+      this.xMinCoord,
+      this.yMinCoord,
+      this.zMinCoord
+    )().compute(this.particleCount);
+    this.renderer.computeAsync(cellIndicesCompute);
+  }
+  private computeCellStartIndices() {
+    const cellStartIndicesCompute = computeCellStartIndicesPass(
+      this.cellStartIndicesBuffer,
+      this.cellCountsBuffer,
+      this.totalCellCount
+    )().compute(this.particleCount);
+    this.renderer.computeAsync(cellStartIndicesCompute);
+  }
+
+  private computeReorderParticle() {
+    const reorderParticleCompute = computeReorderParticlePass(
+      this.cellIndicesBuffer,
+      this.cellStartIndicesBuffer,
+      this.offsetsBuffer,
+      this.positionsBuffer,
+      this.velocitiesBuffer,
+      this.reorderedPositionsBuffer,
+      this.reorderedVelocitiesBuffer
+    )().compute(this.particleCount);
+    this.renderer.computeAsync(reorderParticleCompute);
+  }
+
+  private computeSwitchPosition() {
+    const switchPositionCompute = computeSwitchPositionPass(
+      this.positionsBuffer,
+      this.velocitiesBuffer,
+      this.reorderedPositionsBuffer,
+      this.reorderedVelocitiesBuffer
+    )().compute(this.particleCount);
+    this.renderer.computeAsync(switchPositionCompute);
   }
 
   private computeGravity() {
@@ -214,11 +313,19 @@ export class Particles {
     const densityCompute = computeDensityPass(
       this.positionsBuffer,
       this.densitiesBuffer,
-      this.particleCount,
+      this.cellStartIndicesBuffer,
+      this.cellCountsBuffer,
       this.poly6Kernel,
       this.h2,
       this.h6,
-      this.mass
+      this.mass,
+      this.cellSize,
+      this.cellCountX,
+      this.cellCountY,
+      this.cellCountZ,
+      this.xMinCoord,
+      this.yMinCoord,
+      this.zMinCoord
     )().compute(this.particleCount);
     this.renderer.computeAsync(densityCompute);
   }
@@ -239,10 +346,18 @@ export class Particles {
       this.densitiesBuffer,
       this.pressuresBuffer,
       this.pressureForcesBuffer,
-      this.particleCount,
+      this.cellStartIndicesBuffer,
+      this.cellCountsBuffer,
       this.mass,
       this.h,
-      this.spiky
+      this.spiky,
+      this.cellSize,
+      this.cellCountX,
+      this.cellCountY,
+      this.cellCountZ,
+      this.xMinCoord,
+      this.yMinCoord,
+      this.zMinCoord
     )().compute(this.particleCount);
     this.renderer.computeAsync(pressureForceCompute);
   }
@@ -253,11 +368,19 @@ export class Particles {
       this.velocitiesBuffer,
       this.densitiesBuffer,
       this.viscosityForcesBuffer,
-      this.particleCount,
+      this.cellStartIndicesBuffer,
+      this.cellCountsBuffer,
       this.viscosity,
       this.viscosityMu,
       this.h,
-      this.mass
+      this.mass,
+      this.cellSize,
+      this.cellCountX,
+      this.cellCountY,
+      this.cellCountZ,
+      this.xMinCoord,
+      this.yMinCoord,
+      this.zMinCoord
     )().compute(this.particleCount);
     this.renderer.computeAsync(viscosityCompute);
   }
@@ -275,11 +398,54 @@ export class Particles {
   }
 
   public compute() {
+    this.computeResetCalc();
+    this.computeCellIndices();
+    this.computeCellStartIndices();
+    this.computeReorderParticle();
+    // this.computeSwitchPosition();
     this.computeGravity();
     this.computeDensity();
     this.computePressure();
     this.computePressureForce();
     this.computeViscosity();
     this.computeIntegrate();
+  }
+
+  private disposeParticleBuffers() {
+    this.positionsBuffer.dispose();
+    this.velocitiesBuffer.dispose();
+    this.densitiesBuffer.dispose();
+    this.pressuresBuffer.dispose();
+    this.pressureForcesBuffer.dispose();
+    this.viscosityForcesBuffer.dispose();
+  }
+
+  private disposeParticleMesh() {
+    if (this.scene && this.sphereMesh) {
+      this.scene.remove(this.sphereMesh);
+    }
+    if (this.sphereMesh) {
+      this.sphereMesh.geometry.dispose();
+      this.sphereMesh.dispose();
+    }
+    if (this.sphereGeometry) {
+      this.sphereGeometry.dispose();
+    }
+    if (this.sphereMaterial) {
+      this.sphereMaterial.dispose();
+    }
+  }
+
+  public async updateParticleCount(value: number) {
+    this.particleCount = value;
+
+    this.disposeParticleBuffers();
+    this.disposeParticleMesh();
+
+    await this.initialize();
+
+    if (this.scene) {
+      this.scene.add(this.sphereMesh);
+    }
   }
 }

@@ -28,18 +28,18 @@ export class App {
     this.height = window.innerHeight;
     this.aspect = this.width / this.height;
 
-    this.initializeApp();
+    this.initializeApp().catch(console.error);
   }
 
-  private initializeApp(): void {
-    this.initializeManagers();
+  private async initializeApp(): Promise<void> {
+    await this.initializeManagers();
 
     this.setupScene();
     this.setupEventListeners();
     this.startAnimation();
   }
 
-  private initializeManagers() {
+  private async initializeManagers() {
     this.sceneManager = new SceneManager();
     this.cameraManager = new CameraManager(this.aspect);
     this.rendererManager = new RendererManager(this.width, this.height);
@@ -60,8 +60,8 @@ export class App {
       depthNode,
       this.rendererManager.renderer
     );
-    this.particles.initialize();
-    this.paramsControls = new ParamsControls(this.boxBoundary);
+    await this.particles.initialize();
+    this.paramsControls = new ParamsControls(this.boxBoundary, this.particles);
   }
 
   private setupScene(): void {
@@ -71,17 +71,17 @@ export class App {
   }
 
   private setupEventListeners(): void {
-    window.addEventListener("resize", this.handleResize.bind(this));
+    window.addEventListener("resize", this.handleResize);
   }
 
-  private handleResize(): void {
+  private handleResize = () => {
     this.width = window.innerWidth;
     this.height = window.innerHeight;
     this.aspect = this.width / this.height;
 
     this.cameraManager.updateAspect(this.aspect);
     this.rendererManager.resize(this.width, this.height);
-  }
+  };
 
   private animate = (): void => {
     this.animationId = requestAnimationFrame(this.animate);
