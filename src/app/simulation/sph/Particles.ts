@@ -76,8 +76,8 @@ export class Particles {
     this.h = 1.0;
     this.h2 = Math.pow(this.h, 2);
     this.h3 = Math.pow(this.h, 3);
-    this.h6 = Math.pow(this.h, 6);
-    this.h9 = Math.pow(this.h, 9);
+    this.h6 = Math.pow(this.h3, 2);
+    this.h9 = Math.pow(this.h3, 3);
     this.restDensity = 0.8;
     this.pressureStiffness = 100;
     this.poly6Kernel = 315 / (64 * Math.PI * this.h9);
@@ -255,8 +255,7 @@ export class Particles {
       this.restitution,
       this.boxWidth,
       this.boxHeight,
-      this.boxDepth,
-      this.mass
+      this.boxDepth
     )().compute(this.particleCount);
     this.renderer.computeAsync(gravityCompute);
   }

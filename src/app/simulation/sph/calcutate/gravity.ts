@@ -10,8 +10,7 @@ export function computeGravityPass(
   restitution: number,
   boxWidth: UniformTypeOf<number>,
   boxHeight: UniformTypeOf<number>,
-  boxDepth: UniformTypeOf<number>,
-  mass: number
+  boxDepth: UniformTypeOf<number>
 ): THREE.TSL.ShaderNodeFn<[]> {
   return Fn(() => {
     const pos = positionsBuffer.element(instanceIndex);

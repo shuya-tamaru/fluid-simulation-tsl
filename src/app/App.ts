@@ -103,4 +103,8 @@ export class App {
     }
     window.removeEventListener("resize", this.handleResize);
   }
+
+  public getParamsControls(): ParamsControls {
+    return this.paramsControls;
+  }
 }
