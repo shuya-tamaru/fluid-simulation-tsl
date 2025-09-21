@@ -16,7 +16,7 @@ export function computePressureForcePass(
     const pressureForce_i = pressureForcesBuffer.element(instanceIndex);
     const pressure_i = pressuresBuffer.element(instanceIndex);
     const pos_i = positionsBuffer.element(instanceIndex);
-    const density_i = densitiesBuffer.element(instanceIndex);
+    const density_i = max(densitiesBuffer.element(instanceIndex), float(1e-8)).toVar();
     const pForce_i = vec3(0, 0, 0).toVar();
 
     let j = uint(0).toVar();

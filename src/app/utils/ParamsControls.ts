@@ -1,4 +1,3 @@
-import * as THREE from "three/webgpu";
 import GUI from "lil-gui";
 import type { BoxBoundary } from "../simulation/boundaries/BoxBoundary";
 
@@ -14,7 +13,7 @@ export class ParamsControls {
 
   initialize() {
     this.gui
-      .add(this.boxBoundary.getSizes(), "width", 10, 100, 1)
+      .add(this.boxBoundary.getSizes(), "width", 10, 100, 0.2)
       .name("Box Width")
       .onChange((value: number) => {
         this.boxBoundary.updateSizes(
@@ -24,7 +23,7 @@ export class ParamsControls {
         );
       });
     this.gui
-      .add(this.boxBoundary.getSizes(), "depth", 10, 100, 1)
+      .add(this.boxBoundary.getSizes(), "depth", 10, 100, 0.2)
       .name("Box Depth")
       .onChange((value: number) => {
         this.boxBoundary.updateSizes(

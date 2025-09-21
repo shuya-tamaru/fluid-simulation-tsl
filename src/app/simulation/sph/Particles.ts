@@ -69,22 +69,22 @@ export class Particles {
     this.boxWidth = boxWidth;
     this.boxHeight = boxHeight;
     this.boxDepth = boxDepth;
-    this.particleCount = 1000;
+    this.particleCount = 10000;
     this.delta = 1 / 60;
     this.restitution = 0.1;
-    this.mass = 0.4;
+    this.mass = 0.3;
     this.h = 1.0;
     this.h2 = Math.pow(this.h, 2);
     this.h3 = Math.pow(this.h, 3);
     this.h6 = Math.pow(this.h, 6);
     this.h9 = Math.pow(this.h, 9);
     this.restDensity = 0.8;
-    this.pressureStiffness = 50;
+    this.pressureStiffness = 100;
     this.poly6Kernel = 315 / (64 * Math.PI * this.h9);
     this.spiky = -45 / (Math.PI * this.h6);
     this.viscosity = 45 / (Math.PI * this.h6);
     this.viscosityMu = 0.12;
-    this.maxSpeed = 20;
+    this.maxSpeed = 15;
 
     this.positionsBuffer = instancedArray(this.particleCount, "vec3");
     this.velocitiesBuffer = instancedArray(this.particleCount, "vec3");
@@ -146,17 +146,17 @@ export class Particles {
       float(0.0),
       float(1.0)
     ).toVar();
-    const deep = vec3(0.0, 0.05, 0.2);
+    const deep = vec3(0.0, 0.05, 0.9);
     const mid = vec3(0.0, 0.6, 0.8);
-    const foam = vec3(0.5, 0.55, 1.0);
+    const foam = vec3(0.3, 0.3, 1.0);
 
     const color = vec3(0.0).toVar();
 
-    If(t.lessThan(float(0.7)), () => {
-      const k = t.div(float(0.7));
+    If(t.lessThan(float(0.85)), () => {
+      const k = t.div(float(0.85));
       color.assign(mix(deep, mid, k));
     }).Else(() => {
-      const k = t.sub(float(0.7)).div(float(0.3));
+      const k = t.sub(float(0.85)).div(float(0.15));
       color.assign(mix(mid, foam, k));
     });
 
@@ -167,7 +167,7 @@ export class Particles {
     this.sphereMaterial.colorNode = Fn(() => {
       const normal = normalLocal.toVar();
       const lightDir = vec3(0.3, 1.0, 0.5).normalize().toVar();
-      const ambient = float(1.0).toVar();
+      const ambient = float(0.2).toVar();
       const diffuse = max(normal.dot(lightDir), float(0.0)).toVar();
       const speed = this.velocitiesBuffer
         .element(instanceIndex)
@@ -176,7 +176,7 @@ export class Particles {
       // @ts-ignore
       const baseColor = this.getColorByVelocity(speed);
       const t = clamp(
-        speed.mul(float(1.5)).add(float(1.0).div(float(this.maxSpeed))),
+        speed.mul(float(.5)).add(float(1.0).div(float(this.maxSpeed))),
         float(0.0),
         float(1.0)
       ).toVar();
@@ -185,7 +185,7 @@ export class Particles {
         .mul(emissiveGain.mul(0.4).mul(smoothstep(float(0.6), float(1.0), t)))
         .toVar();
       const shaded = baseColor
-        .mul(ambient.add(diffuse.mul(float(4.2))))
+        .mul(ambient.add(diffuse.mul(float(3.2))))
         .toVar();
       return shaded;
     })();

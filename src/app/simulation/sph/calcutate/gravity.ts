@@ -19,7 +19,7 @@ export function computeGravityPass(
     const gravity = vec3(0, -9.8, 0).toVar();
 
     const newPos = pos.add(vel.mul(float(delta))).toVar();
-    const newVel = vel.add(float(mass).mul(gravity.mul(float(delta)))).toVar();
+    const newVel = vel.add(gravity.mul(float(delta))).toVar();
 
     If(abs(newPos.x).greaterThan(boxWidth.div(2)), () => {
       newPos.x.assign(boxWidth.div(2).mul(sign(newPos.x)));

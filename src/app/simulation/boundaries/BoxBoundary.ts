@@ -3,7 +3,7 @@ import { abs, float, Fn, positionLocal, uniform } from "three/tsl";
 import type { UniformTypeOf } from "../../types/UniformType";
 
 export class BoxBoundary {
-  private widthNode = uniform(32);
+  private widthNode = uniform(16);
   private heightNode = uniform(16);
   private depthNode = uniform(16);
   private material: THREE.MeshBasicNodeMaterial | null = null;
