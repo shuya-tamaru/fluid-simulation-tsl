@@ -26,7 +26,7 @@ export class Particles {
   private boxWidth!: UniformTypeOf<number>;
   private boxHeight!: UniformTypeOf<number>;
   private boxDepth!: UniformTypeOf<number>;
-  private particleCount!: number;
+  public particleCount!: number;
   private positionsBuffer!: StorageBufferType;
   private velocitiesBuffer!: StorageBufferType;
   private densitiesBuffer!: StorageBufferType;
@@ -35,6 +35,7 @@ export class Particles {
   private viscosityForcesBuffer!: StorageBufferType;
 
   private renderer!: THREE.WebGPURenderer;
+  private scene!: THREE.Scene;
 
   private sphereGeometry!: THREE.SphereGeometry;
   private sphereMaterial!: THREE.MeshBasicNodeMaterial;
@@ -68,7 +69,7 @@ export class Particles {
     this.boxWidth = boxWidth;
     this.boxHeight = boxHeight;
     this.boxDepth = boxDepth;
-    this.particleCount = 10000;
+    this.particleCount = 5000;
     this.delta = 1 / 60;
     this.restitution = 0.1;
     this.mass = 0.3;
@@ -84,7 +85,17 @@ export class Particles {
     this.viscosity = 45 / (Math.PI * this.h6);
     this.viscosityMu = 0.12;
     this.maxSpeed = 15;
+  }
 
+  public async initialize() {
+    this.initializeParticleBuffers();
+    await this.initializeParticlePositions();
+    this.createGeometry();
+    this.createMaterial();
+    this.createMesh();
+  }
+
+  private initializeParticleBuffers() {
     this.positionsBuffer = instancedArray(this.particleCount, "vec3");
     this.velocitiesBuffer = instancedArray(this.particleCount, "vec3");
     this.densitiesBuffer = instancedArray(this.particleCount, "float");
@@ -93,14 +104,7 @@ export class Particles {
     this.viscosityForcesBuffer = instancedArray(this.particleCount, "vec3");
   }
 
-  public initialize() {
-    this.initializeParticlePositions();
-    this.createGeometry();
-    this.createMaterial();
-    this.createMesh();
-  }
-
-  private initializeParticlePositions() {
+  private async initializeParticlePositions() {
     const init = Fn(() => {
       const pos = this.positionsBuffer.element(instanceIndex);
 
@@ -119,7 +123,7 @@ export class Particles {
       pos.assign(initialPosition);
     });
     const initCompute = init().compute(this.particleCount);
-    this.renderer.computeAsync(initCompute);
+    await this.renderer.computeAsync(initCompute);
   }
 
   private createGeometry() {
@@ -190,6 +194,7 @@ export class Particles {
   }
 
   public addToScene(scene: THREE.Scene) {
+    this.scene = scene;
     scene.add(this.sphereMesh);
   }
 
@@ -281,5 +286,43 @@ export class Particles {
     this.computePressureForce();
     this.computeViscosity();
     this.computeIntegrate();
+  }
+
+  private disposeParticleBuffers() {
+    this.positionsBuffer.dispose();
+    this.velocitiesBuffer.dispose();
+    this.densitiesBuffer.dispose();
+    this.pressuresBuffer.dispose();
+    this.pressureForcesBuffer.dispose();
+    this.viscosityForcesBuffer.dispose();
+  }
+
+  private disposeParticleMesh() {
+    if (this.scene && this.sphereMesh) {
+      this.scene.remove(this.sphereMesh);
+    }
+    if (this.sphereMesh) {
+      this.sphereMesh.geometry.dispose();
+      this.sphereMesh.dispose();
+    }
+    if (this.sphereGeometry) {
+      this.sphereGeometry.dispose();
+    }
+    if (this.sphereMaterial) {
+      this.sphereMaterial.dispose();
+    }
+  }
+
+  public async updateParticleCount(value: number) {
+    this.particleCount = value;
+
+    this.disposeParticleBuffers();
+    this.disposeParticleMesh();
+
+    await this.initialize();
+
+    if (this.scene) {
+      this.scene.add(this.sphereMesh);
+    }
   }
 }
