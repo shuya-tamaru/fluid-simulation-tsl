@@ -11,7 +11,6 @@ import {
   If,
   mix,
   max,
-  smoothstep,
 } from "three/tsl";
 import * as THREE from "three/webgpu";
 import type { StorageBufferType } from "../../types/BufferType";
@@ -148,15 +147,15 @@ export class Particles {
     ).toVar();
     const deep = vec3(0.0, 0.05, 0.9);
     const mid = vec3(0.0, 0.6, 0.8);
-    const foam = vec3(0.3, 0.3, 1.0);
+    const foam = vec3(1.0, 1.0, 1.0);
 
     const color = vec3(0.0).toVar();
 
-    If(t.lessThan(float(0.85)), () => {
-      const k = t.div(float(0.85));
+    If(t.lessThan(float(0.7)), () => {
+      const k = t.div(float(0.7));
       color.assign(mix(deep, mid, k));
     }).Else(() => {
-      const k = t.sub(float(0.85)).div(float(0.15));
+      const k = t.sub(float(0.7)).div(float(0.3));
       color.assign(mix(mid, foam, k));
     });
 
@@ -175,15 +174,6 @@ export class Particles {
         .toVar();
       // @ts-ignore
       const baseColor = this.getColorByVelocity(speed);
-      const t = clamp(
-        speed.mul(float(.5)).add(float(1.0).div(float(this.maxSpeed))),
-        float(0.0),
-        float(1.0)
-      ).toVar();
-      const emissiveGain = float(2.8).toVar();
-      const emissive = baseColor
-        .mul(emissiveGain.mul(0.4).mul(smoothstep(float(0.6), float(1.0), t)))
-        .toVar();
       const shaded = baseColor
         .mul(ambient.add(diffuse.mul(float(3.2))))
         .toVar();
