@@ -11,6 +11,7 @@ import {
   If,
   mix,
   max,
+  struct,
 } from "three/tsl";
 import * as THREE from "three/webgpu";
 import type { StorageBufferType } from "../../types/BufferType";
@@ -23,6 +24,7 @@ import { computeViscosityPass } from "./calcutate/viscosity";
 import type { UniformTypeOf } from "../../types/UniformType";
 import { computeCellIndicesPass } from "./calcutate/cellIndices";
 import { computeCellStartIndicesPass } from "./calcutate/cellStartIndices";
+import { computeReorderParticlePass } from "./calcutate/reorderParticle";
 
 export class Particles {
   private boxWidth!: UniformTypeOf<number>;
@@ -33,6 +35,10 @@ export class Particles {
   private cellIndicesBuffer!: StorageBufferType;
   private cellCountsBuffer!: StorageBufferType;
   private cellStartIndicesBuffer!: StorageBufferType;
+  private reorderedPositionsBuffer!: StorageBufferType;
+  private reorderedVelocitiesBuffer!: StorageBufferType;
+  private offsetsBuffer!: StorageBufferType;
+
   private positionsBuffer!: StorageBufferType;
   private velocitiesBuffer!: StorageBufferType;
   private densitiesBuffer!: StorageBufferType;
@@ -122,6 +128,9 @@ export class Particles {
     this.cellIndicesBuffer = instancedArray(this.particleCount, "uint");
     this.cellCountsBuffer = instancedArray(this.totalCellCount, "uint");
     this.cellStartIndicesBuffer = instancedArray(this.totalCellCount, "uint");
+    this.offsetsBuffer = instancedArray(this.totalCellCount, "uint").toAtomic();
+    this.reorderedPositionsBuffer = instancedArray(this.particleCount, "vec3");
+    this.reorderedVelocitiesBuffer = instancedArray(this.particleCount, "vec3");
     this.positionsBuffer = instancedArray(this.particleCount, "vec3");
     this.velocitiesBuffer = instancedArray(this.particleCount, "vec3");
     this.densitiesBuffer = instancedArray(this.particleCount, "float");
@@ -252,6 +261,19 @@ export class Particles {
     this.renderer.computeAsync(cellStartIndicesCompute);
   }
 
+  private computeReorderParticle() {
+    const reorderParticleCompute = computeReorderParticlePass(
+      this.cellIndicesBuffer,
+      this.cellStartIndicesBuffer,
+      this.offsetsBuffer,
+      this.positionsBuffer,
+      this.velocitiesBuffer,
+      this.reorderedPositionsBuffer,
+      this.reorderedVelocitiesBuffer
+    )().compute(this.particleCount);
+    this.renderer.computeAsync(reorderParticleCompute);
+  }
+
   private computeGravity() {
     const gravityCompute = computeGravityPass(
       this.positionsBuffer,
@@ -332,6 +354,7 @@ export class Particles {
   public compute() {
     this.computeCellIndices();
     this.computeCellStartIndices();
+    this.computeReorderParticle();
     this.computeGravity();
     this.computeDensity();
     this.computePressure();
