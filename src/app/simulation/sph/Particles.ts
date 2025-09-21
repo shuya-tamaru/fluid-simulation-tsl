@@ -21,12 +21,16 @@ import { computePressureForcePass } from "./calcutate/pressureForce";
 import { computeIntegratePass } from "./calcutate/integrate";
 import { computeViscosityPass } from "./calcutate/viscosity";
 import type { UniformTypeOf } from "../../types/UniformType";
+import { computeCellIndicesPass } from "./calcutate/cellIndices";
 
 export class Particles {
   private boxWidth!: UniformTypeOf<number>;
   private boxHeight!: UniformTypeOf<number>;
   private boxDepth!: UniformTypeOf<number>;
   public particleCount!: number;
+
+  private cellIndicesBuffer!: StorageBufferType;
+  private cellCountsBuffer!: StorageBufferType;
   private positionsBuffer!: StorageBufferType;
   private velocitiesBuffer!: StorageBufferType;
   private densitiesBuffer!: StorageBufferType;
@@ -57,6 +61,14 @@ export class Particles {
   private viscosity!: number;
   private viscosityMu!: number;
   private maxSpeed!: number;
+  private cellSize!: number;
+  private cellCountX!: number;
+  private cellCountY!: number;
+  private cellCountZ!: number;
+  private totalCellCount!: number;
+  private xMinCoord!: number;
+  private yMinCoord!: number;
+  private zMinCoord!: number;
 
   constructor(
     boxWidth: UniformTypeOf<number>,
@@ -85,6 +97,15 @@ export class Particles {
     this.viscosity = 45 / (Math.PI * this.h6);
     this.viscosityMu = 0.12;
     this.maxSpeed = 15;
+    //neighbor search
+    this.cellSize = this.h;
+    this.cellCountX = Math.floor(this.boxWidth.value / this.cellSize);
+    this.cellCountY = Math.floor(this.boxHeight.value / this.cellSize);
+    this.cellCountZ = Math.floor(this.boxDepth.value / this.cellSize);
+    this.totalCellCount = this.cellCountX * this.cellCountY * this.cellCountZ;
+    this.xMinCoord = -this.boxWidth.value / 2;
+    this.yMinCoord = -this.boxHeight.value / 2;
+    this.zMinCoord = -this.boxDepth.value / 2;
   }
 
   public async initialize() {
@@ -96,6 +117,8 @@ export class Particles {
   }
 
   private initializeParticleBuffers() {
+    this.cellIndicesBuffer = instancedArray(this.particleCount, "uint");
+    this.cellCountsBuffer = instancedArray(this.particleCount, "uint");
     this.positionsBuffer = instancedArray(this.particleCount, "vec3");
     this.velocitiesBuffer = instancedArray(this.particleCount, "vec3");
     this.densitiesBuffer = instancedArray(this.particleCount, "float");
@@ -202,6 +225,22 @@ export class Particles {
     return this.positionsBuffer;
   }
 
+  private computeCellIndices() {
+    const cellIndicesCompute = computeCellIndicesPass(
+      this.cellIndicesBuffer,
+      this.cellCountsBuffer,
+      this.positionsBuffer,
+      this.cellSize,
+      this.cellCountX,
+      this.cellCountY,
+      this.cellCountZ,
+      this.xMinCoord,
+      this.yMinCoord,
+      this.zMinCoord
+    )().compute(this.particleCount);
+    this.renderer.computeAsync(cellIndicesCompute);
+  }
+
   private computeGravity() {
     const gravityCompute = computeGravityPass(
       this.positionsBuffer,
@@ -280,6 +319,7 @@ export class Particles {
   }
 
   public compute() {
+    this.computeCellIndices();
     this.computeGravity();
     this.computeDensity();
     this.computePressure();
