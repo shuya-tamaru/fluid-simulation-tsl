@@ -14,8 +14,7 @@ import {
 } from "three/tsl";
 import * as THREE from "three/webgpu";
 import type { StorageBufferType } from "../../types/BufferType";
-import { computeGravityPass } from "./calcutate/gravity";
-import { computeDensityPass } from "./calcutate/dencity";
+import { computeDensityPass } from "./calcutate/density";
 import { computePressurePass } from "./calcutate/pressure";
 import { computePressureForcePass } from "./calcutate/pressureForce";
 import { computeIntegratePass } from "./calcutate/integrate";
@@ -162,11 +161,11 @@ export class Particles {
 
     const color = vec3(0.0).toVar();
 
-    If(t.lessThan(float(0.7)), () => {
-      const k = t.div(float(0.7));
+    If(t.lessThan(float(0.85)), () => {
+      const k = t.div(float(0.85));
       color.assign(mix(deep, mid, k));
     }).Else(() => {
-      const k = t.sub(float(0.7)).div(float(0.3));
+      const k = t.sub(float(0.85)).div(float(0.15));
       color.assign(mix(mid, foam, k));
     });
 
@@ -247,18 +246,6 @@ export class Particles {
     return this.positionsBuffer;
   }
 
-  private computeGravity() {
-    const gravityCompute = computeGravityPass(
-      this.positionsBuffer,
-      this.velocitiesBuffer,
-      this.delta,
-      this.restitution,
-      this.boxWidth,
-      this.boxHeight,
-      this.boxDepth
-    )().compute(this.particleCount);
-    this.renderer.computeAsync(gravityCompute);
-  }
   private computeDensity() {
     const densityCompute = computeDensityPass(
       this.positionsBuffer,
@@ -318,13 +305,16 @@ export class Particles {
       this.pressureForcesBuffer,
       this.viscosityForcesBuffer,
       this.mass,
-      this.delta
+      this.delta,
+      this.restitution,
+      this.boxWidth,
+      this.boxHeight,
+      this.boxDepth
     )().compute(this.particleCount);
     this.renderer.computeAsync(integrateCompute);
   }
 
   public compute() {
-    this.computeGravity();
     this.computeDensity();
     this.computePressure();
     this.computePressureForce();
