@@ -27,13 +27,13 @@ export class ParamsControls {
 
   initialize() {
     this.gui
-      .add(this.boundaryConfig.width, "value", 10, 100, 0.2)
+      .add(this.boundaryConfig.width, "value", 10, 32, 0.2)
       .name("Box Width")
       .onChange(() => {
         this.boxBoundary.updateSizes();
       });
     this.gui
-      .add(this.boxBoundary.getSizes(), "depth", 10, 100, 0.2)
+      .add(this.boundaryConfig.depth, "value", 10, 32, 0.2)
       .name("Box Depth")
       .onChange(() => {
         this.boxBoundary.updateSizes();
