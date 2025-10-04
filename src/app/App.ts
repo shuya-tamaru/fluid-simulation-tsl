@@ -5,6 +5,8 @@ import { ControlsManager } from "./core/Controls";
 import { BoxBoundary } from "./simulation/boundaries/BoxBoundary";
 import { Particles } from "./simulation/sph/Particles";
 import { ParamsControls } from "./utils/ParamsControls";
+import { SPHConfig } from "./simulation/sph/SPHConfig";
+import { BoundaryConfig } from "./simulation/boundaries/BoundaryConfig";
 
 export class App {
   private sceneManager!: SceneManager;
@@ -20,6 +22,10 @@ export class App {
   private aspect: number;
 
   private animationId?: number;
+
+  //config
+  private sphConfig!: SPHConfig;
+  private boundaryConfig!: BoundaryConfig;
 
   constructor() {
     this.width = window.innerWidth;
@@ -45,20 +51,21 @@ export class App {
       this.cameraManager.camera,
       this.rendererManager.renderer.domElement
     );
-    this.boxBoundary = new BoxBoundary();
-    const {
-      width: widthNode,
-      height: heightNode,
-      depth: depthNode,
-    } = this.boxBoundary.getSizesNodes();
+    this.boundaryConfig = new BoundaryConfig();
+    this.boxBoundary = new BoxBoundary(this.boundaryConfig);
+    this.sphConfig = new SPHConfig();
     this.particles = new Particles(
-      widthNode,
-      heightNode,
-      depthNode,
-      this.rendererManager.renderer
+      this.rendererManager.renderer,
+      this.sphConfig,
+      this.boundaryConfig
     );
     await this.particles.initialize();
-    this.paramsControls = new ParamsControls(this.boxBoundary, this.particles);
+    this.paramsControls = new ParamsControls(
+      this.boxBoundary,
+      this.particles,
+      this.boundaryConfig,
+      this.sphConfig
+    );
   }
 
   private addObjectsToScene(): void {

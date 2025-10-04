@@ -21,6 +21,7 @@ import { computeIntegratePass } from "./calcutate/integrate";
 import { computeViscosityPass } from "./calcutate/viscosity";
 import type { UniformTypeOf } from "../../types/UniformType";
 import { SPHConfig } from "./SPHConfig";
+import type { BoundaryConfig } from "../boundaries/BoundaryConfig";
 
 export class Particles {
   private boxWidth!: UniformTypeOf<number>;
@@ -28,6 +29,7 @@ export class Particles {
   private boxDepth!: UniformTypeOf<number>;
   public particleCount!: number;
   private sphConfig!: SPHConfig;
+  private boundaryConfig!: BoundaryConfig;
   private positionsBuffer!: StorageBufferType;
   private velocitiesBuffer!: StorageBufferType;
   private densitiesBuffer!: StorageBufferType;
@@ -45,17 +47,16 @@ export class Particles {
   //params
 
   constructor(
-    boxWidth: UniformTypeOf<number>,
-    boxHeight: UniformTypeOf<number>,
-    boxDepth: UniformTypeOf<number>,
-    renderer: THREE.WebGPURenderer
+    renderer: THREE.WebGPURenderer,
+    sphConfig: SPHConfig,
+    boundaryConfig: BoundaryConfig
   ) {
     this.renderer = renderer;
-    this.particleCount = 5000;
-    this.sphConfig = new SPHConfig();
-    this.boxWidth = boxWidth;
-    this.boxHeight = boxHeight;
-    this.boxDepth = boxDepth;
+    this.sphConfig = sphConfig;
+    this.particleCount = sphConfig.particleCount;
+    this.boxWidth = boundaryConfig.width;
+    this.boxHeight = boundaryConfig.height;
+    this.boxDepth = boundaryConfig.depth;
   }
 
   public async initialize() {
@@ -79,9 +80,9 @@ export class Particles {
     const init = Fn(() => {
       const pos = this.positionsBuffer.element(instanceIndex);
 
-      const x = hash(instanceIndex.mul(3)).sub(0.5).mul(float(this.boxWidth));
-      const y = hash(instanceIndex.mul(5)).sub(0.5).mul(float(this.boxHeight));
-      const z = hash(instanceIndex.mul(7)).sub(0.5).mul(float(this.boxDepth));
+      const x = hash(instanceIndex.mul(3)).sub(0.5).mul(this.boxWidth);
+      const y = hash(instanceIndex.mul(5)).sub(0.5).mul(this.boxHeight);
+      const z = hash(instanceIndex.mul(7)).sub(0.5).mul(this.boxDepth);
 
       const initialPosition = vec3(x, y, z);
 
@@ -173,24 +174,15 @@ export class Particles {
   }
 
   private disposeParticleMesh() {
-    if (this.scene && this.sphereMesh) {
+    if (this.scene) {
       this.scene.remove(this.sphereMesh);
     }
-    if (this.sphereMesh) {
-      this.sphereMesh.geometry.dispose();
-      this.sphereMesh.dispose();
-    }
-    if (this.sphereGeometry) {
-      this.sphereGeometry.dispose();
-    }
-    if (this.sphereMaterial) {
-      this.sphereMaterial.dispose();
-    }
+    this.sphereMesh.dispose();
+    this.sphereGeometry.dispose();
+    this.sphereMaterial.dispose();
   }
 
-  public async updateParticleCount(value: number) {
-    this.particleCount = value;
-
+  public async updateParticleCount() {
     this.disposeParticleBuffers();
     this.disposeParticleMesh();
 

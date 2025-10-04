@@ -1,45 +1,48 @@
 import GUI from "lil-gui";
 import type { BoxBoundary } from "../simulation/boundaries/BoxBoundary";
 import type { Particles } from "../simulation/sph/Particles";
+import type { SPHConfig } from "../simulation/sph/SPHConfig";
+import type { BoundaryConfig } from "../simulation/boundaries/BoundaryConfig";
 
 export class ParamsControls {
   private gui: GUI;
+  private boundaryConfig!: BoundaryConfig;
+  private sphConfig!: SPHConfig;
   private boxBoundary: BoxBoundary;
   private particles: Particles;
 
-  constructor(boxBoundary: BoxBoundary, particles: Particles) {
+  constructor(
+    boxBoundary: BoxBoundary,
+    particles: Particles,
+    boundaryConfig: BoundaryConfig,
+    sphConfig: SPHConfig
+  ) {
     this.gui = new GUI();
     this.boxBoundary = boxBoundary;
     this.particles = particles;
+    this.boundaryConfig = boundaryConfig;
+    this.sphConfig = sphConfig;
     this.initialize();
   }
 
   initialize() {
     this.gui
-      .add(this.boxBoundary.getSizes(), "width", 10, 100, 0.2)
+      .add(this.boundaryConfig.width, "value", 10, 100, 0.2)
       .name("Box Width")
-      .onChange((value: number) => {
-        this.boxBoundary.updateSizes(
-          value,
-          this.boxBoundary.getSizes().height,
-          this.boxBoundary.getSizes().depth
-        );
+      .onChange(() => {
+        this.boxBoundary.updateSizes();
       });
     this.gui
       .add(this.boxBoundary.getSizes(), "depth", 10, 100, 0.2)
       .name("Box Depth")
-      .onChange((value: number) => {
-        this.boxBoundary.updateSizes(
-          this.boxBoundary.getSizes().width,
-          this.boxBoundary.getSizes().height,
-          value
-        );
+      .onChange(() => {
+        this.boxBoundary.updateSizes();
       });
     this.gui
-      .add(this.particles, "particleCount", 1000, 20000, 1000)
+      .add(this.sphConfig, "particleCount", 1000, 20000, 1000)
       .name("Particle Count")
-      .onChange(async (value: number) => {
-        await this.particles.updateParticleCount(value);
+      .onChange(async () => {
+        await this.particles.updateParticleCount();
       });
   }
 }

@@ -1,13 +1,22 @@
 import * as THREE from "three/webgpu";
 import { abs, float, Fn, positionLocal, uniform } from "three/tsl";
 import type { UniformTypeOf } from "../../types/UniformType";
+import type { BoundaryConfig } from "./BoundaryConfig";
 
 export class BoxBoundary {
-  private widthNode = uniform(16);
-  private heightNode = uniform(16);
-  private depthNode = uniform(16);
+  private widthNode!: UniformTypeOf<number>;
+  private heightNode!: UniformTypeOf<number>;
+  private depthNode!: UniformTypeOf<number>;
   private material!: THREE.MeshBasicNodeMaterial;
   private mesh!: THREE.Mesh;
+  private boundaryConfig!: BoundaryConfig;
+
+  constructor(boundaryConfig: BoundaryConfig) {
+    this.boundaryConfig = boundaryConfig;
+    this.widthNode = boundaryConfig.width;
+    this.heightNode = boundaryConfig.height;
+    this.depthNode = boundaryConfig.depth;
+  }
 
   public createGeometry(): THREE.BoxGeometry {
     return new THREE.BoxGeometry(
@@ -77,18 +86,10 @@ export class BoxBoundary {
     };
   }
 
-  public updateSizes(width: number, height: number, depth: number): void {
-    this.widthNode.value = width;
-    this.heightNode.value = height;
-    this.depthNode.value = depth;
-
+  public updateSizes(): void {
     if (this.mesh && this.mesh.geometry) {
       this.mesh.geometry.dispose();
       this.mesh.geometry = this.createGeometry();
-    }
-
-    if (this.material) {
-      this.material.needsUpdate = true;
     }
   }
 }
