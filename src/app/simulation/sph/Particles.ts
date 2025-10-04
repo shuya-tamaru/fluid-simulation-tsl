@@ -20,12 +20,14 @@ import { computePressureForcePass } from "./calcutate/pressureForce";
 import { computeIntegratePass } from "./calcutate/integrate";
 import { computeViscosityPass } from "./calcutate/viscosity";
 import type { UniformTypeOf } from "../../types/UniformType";
+import { SPHConfig } from "./SPHConfig";
 
 export class Particles {
   private boxWidth!: UniformTypeOf<number>;
   private boxHeight!: UniformTypeOf<number>;
   private boxDepth!: UniformTypeOf<number>;
   public particleCount!: number;
+  private sphConfig!: SPHConfig;
   private positionsBuffer!: StorageBufferType;
   private velocitiesBuffer!: StorageBufferType;
   private densitiesBuffer!: StorageBufferType;
@@ -41,21 +43,6 @@ export class Particles {
   private sphereMesh!: THREE.InstancedMesh;
 
   //params
-  private delta!: number;
-  private restitution!: number;
-  private mass!: number;
-  private h!: number;
-  private h2!: number;
-  private h3!: number;
-  private h6!: number;
-  private h9!: number;
-  private poly6Kernel!: number;
-  private spiky!: number;
-  private restDensity!: number;
-  private pressureStiffness!: number;
-  private viscosity!: number;
-  private viscosityMu!: number;
-  private maxSpeed!: number;
 
   constructor(
     boxWidth: UniformTypeOf<number>,
@@ -64,33 +51,11 @@ export class Particles {
     renderer: THREE.WebGPURenderer
   ) {
     this.renderer = renderer;
-
+    this.particleCount = 5000;
+    this.sphConfig = new SPHConfig();
     this.boxWidth = boxWidth;
     this.boxHeight = boxHeight;
     this.boxDepth = boxDepth;
-    this.particleCount = 5000;
-    this.delta = 1 / 60;
-    this.restitution = 0.1;
-    this.mass = 0.3;
-    this.h = 1.0;
-    this.h2 = Math.pow(this.h, 2);
-    this.h3 = Math.pow(this.h, 3);
-    this.h6 = Math.pow(this.h3, 2);
-    this.h9 = Math.pow(this.h3, 3);
-    this.restDensity = 0.8;
-    this.pressureStiffness = 100;
-    this.poly6Kernel = 315 / (64 * Math.PI * this.h9);
-    this.spiky = -45 / (Math.PI * this.h6);
-    this.viscosity = 45 / (Math.PI * this.h6);
-    this.viscosityMu = 0.12;
-    this.maxSpeed = 15;
-
-    this.positionsBuffer = instancedArray(this.particleCount, "vec3");
-    this.velocitiesBuffer = instancedArray(this.particleCount, "vec3");
-    this.densitiesBuffer = instancedArray(this.particleCount, "float");
-    this.pressuresBuffer = instancedArray(this.particleCount, "float");
-    this.pressureForcesBuffer = instancedArray(this.particleCount, "vec3");
-    this.viscosityForcesBuffer = instancedArray(this.particleCount, "vec3");
   }
 
   public async initialize() {
@@ -114,15 +79,9 @@ export class Particles {
     const init = Fn(() => {
       const pos = this.positionsBuffer.element(instanceIndex);
 
-      const x = hash(instanceIndex.mul(1664525))
-        .sub(0.5)
-        .mul(float(this.boxWidth));
-      const y = hash(instanceIndex.mul(22695477))
-        .sub(0.5)
-        .mul(float(this.boxHeight));
-      const z = hash(instanceIndex.mul(747796405))
-        .sub(0.5)
-        .mul(float(this.boxDepth));
+      const x = hash(instanceIndex.mul(3)).sub(0.5).mul(float(this.boxWidth));
+      const y = hash(instanceIndex.mul(5)).sub(0.5).mul(float(this.boxHeight));
+      const z = hash(instanceIndex.mul(7)).sub(0.5).mul(float(this.boxDepth));
 
       const initialPosition = vec3(x, y, z);
 
@@ -151,7 +110,7 @@ export class Particles {
   // @ts-ignore
   private getColorByVelocity = Fn(([speed]) => {
     const t = clamp(
-      speed.div(float(this.maxSpeed)),
+      speed.div(float(this.sphConfig.maxSpeed)),
       float(0.0),
       float(1.0)
     ).toVar();
@@ -251,10 +210,10 @@ export class Particles {
       this.positionsBuffer,
       this.densitiesBuffer,
       this.particleCount,
-      this.poly6Kernel,
-      this.h2,
-      this.h6,
-      this.mass
+      this.sphConfig.poly6Kernel,
+      this.sphConfig.h2,
+      this.sphConfig.h6,
+      this.sphConfig.mass
     )().compute(this.particleCount);
     this.renderer.computeAsync(densityCompute);
   }
@@ -263,8 +222,8 @@ export class Particles {
     const pressureCompute = computePressurePass(
       this.densitiesBuffer,
       this.pressuresBuffer,
-      this.restDensity,
-      this.pressureStiffness
+      this.sphConfig.restDensity,
+      this.sphConfig.pressureStiffness
     )().compute(this.particleCount);
     this.renderer.computeAsync(pressureCompute);
   }
@@ -276,9 +235,9 @@ export class Particles {
       this.pressuresBuffer,
       this.pressureForcesBuffer,
       this.particleCount,
-      this.mass,
-      this.h,
-      this.spiky
+      this.sphConfig.mass,
+      this.sphConfig.h,
+      this.sphConfig.spiky
     )().compute(this.particleCount);
     this.renderer.computeAsync(pressureForceCompute);
   }
@@ -290,10 +249,10 @@ export class Particles {
       this.densitiesBuffer,
       this.viscosityForcesBuffer,
       this.particleCount,
-      this.viscosity,
-      this.viscosityMu,
-      this.h,
-      this.mass
+      this.sphConfig.viscosity,
+      this.sphConfig.viscosityMu,
+      this.sphConfig.h,
+      this.sphConfig.mass
     )().compute(this.particleCount);
     this.renderer.computeAsync(viscosityCompute);
   }
@@ -304,9 +263,9 @@ export class Particles {
       this.velocitiesBuffer,
       this.pressureForcesBuffer,
       this.viscosityForcesBuffer,
-      this.mass,
-      this.delta,
-      this.restitution,
+      this.sphConfig.mass,
+      this.sphConfig.delta,
+      this.sphConfig.restitution,
       this.boxWidth,
       this.boxHeight,
       this.boxDepth

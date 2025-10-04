@@ -6,8 +6,8 @@ export class BoxBoundary {
   private widthNode = uniform(16);
   private heightNode = uniform(16);
   private depthNode = uniform(16);
-  private material: THREE.MeshBasicNodeMaterial | null = null;
-  private mesh: THREE.Mesh | null = null;
+  private material!: THREE.MeshBasicNodeMaterial;
+  private mesh!: THREE.Mesh;
 
   public createGeometry(): THREE.BoxGeometry {
     return new THREE.BoxGeometry(
@@ -29,8 +29,6 @@ export class BoxBoundary {
   }
 
   private updateMaterialOpacityNode(): void {
-    if (!this.material) return;
-
     this.material.opacityNode = Fn(() => {
       const edgeWidth = float(0.05);
       const isXEdge = abs(positionLocal.x).greaterThan(
@@ -48,8 +46,6 @@ export class BoxBoundary {
       const isEdge = edgeXY.or(edgeXZ).or(edgeYZ);
       return isEdge.select(float(1.0), float(0));
     })();
-
-    this.material.needsUpdate = true;
   }
 
   public createMesh(): THREE.Mesh {

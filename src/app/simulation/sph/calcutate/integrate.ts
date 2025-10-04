@@ -27,8 +27,8 @@ export function computeIntegratePass(
     const gravity = vec3(0, -9.8, 0).toVar();
     const acceleration = pressureForce
       .add(viscosityForce)
-      .add(gravity)
       .mul(invMass)
+      .add(gravity)
       .toVar();
     const newVel = vel.add(acceleration.mul(float(delta))).toVar();
     const newPos = pos.add(newVel.mul(float(delta))).toVar();

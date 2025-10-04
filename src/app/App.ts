@@ -2,7 +2,6 @@ import { SceneManager } from "./core/Scene";
 import { CameraManager } from "./core/Camera";
 import { RendererManager } from "./core/Renderer";
 import { ControlsManager } from "./core/Controls";
-import { LightingManager } from "./core/Lighting";
 import { BoxBoundary } from "./simulation/boundaries/BoxBoundary";
 import { Particles } from "./simulation/sph/Particles";
 import { ParamsControls } from "./utils/ParamsControls";
@@ -12,7 +11,6 @@ export class App {
   private cameraManager!: CameraManager;
   private rendererManager!: RendererManager;
   private controlsManager!: ControlsManager;
-  private lightingManager!: LightingManager;
   private boxBoundary!: BoxBoundary;
   private particles!: Particles;
   private paramsControls!: ParamsControls;
@@ -34,7 +32,7 @@ export class App {
   private async initializeApp(): Promise<void> {
     await this.initializeManagers();
 
-    this.setupScene();
+    this.addObjectsToScene();
     this.setupEventListeners();
     this.startAnimation();
   }
@@ -47,7 +45,6 @@ export class App {
       this.cameraManager.camera,
       this.rendererManager.renderer.domElement
     );
-    this.lightingManager = new LightingManager();
     this.boxBoundary = new BoxBoundary();
     const {
       width: widthNode,
@@ -64,8 +61,7 @@ export class App {
     this.paramsControls = new ParamsControls(this.boxBoundary, this.particles);
   }
 
-  private setupScene(): void {
-    this.lightingManager.addToScene(this.sceneManager.scene);
+  private addObjectsToScene(): void {
     this.boxBoundary.addToScene(this.sceneManager.scene);
     this.particles.addToScene(this.sceneManager.scene);
   }
