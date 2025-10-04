@@ -182,10 +182,10 @@ export class Particles {
     this.sphereMaterial.dispose();
   }
 
-  public async updateParticleCount() {
+  public async updateParticleCount(value: number) {
     this.disposeParticleBuffers();
     this.disposeParticleMesh();
-
+    this.particleCount = value;
     await this.initialize();
 
     if (this.scene) {

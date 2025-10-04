@@ -41,8 +41,8 @@ export class ParamsControls {
     this.gui
       .add(this.sphConfig, "particleCount", 1000, 20000, 1000)
       .name("Particle Count")
-      .onChange(async () => {
-        await this.particles.updateParticleCount();
+      .onChange(async (value: number) => {
+        await this.particles.updateParticleCount(value);
       });
   }
 }
