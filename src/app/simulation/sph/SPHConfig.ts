@@ -1,12 +1,12 @@
 export class SPHConfig {
-  particleCount = 5000;
+  particleCount = 10000;
   delta = 1 / 60;
   restitution = 0.1;
-  mass = 0.4;
+  mass = 0.3;
   h = 1.0;
   restDensity = 1.0;
   pressureStiffness = 100;
-  viscosityMu = 0.12;
+  viscosityMu = 0.22;
   maxSpeed = 15;
 
   get h2() {

@@ -1,5 +1,5 @@
 import * as THREE from "three/webgpu";
-import { abs, float, Fn, positionLocal, uniform } from "three/tsl";
+import { abs, float, Fn, positionLocal } from "three/tsl";
 import type { UniformTypeOf } from "../../types/UniformType";
 import type { BoundaryConfig } from "./BoundaryConfig";
 
