@@ -3,8 +3,8 @@ export class SPHConfig {
   delta = 1 / 60;
   restitution = 0.1;
   mass = 0.3;
-  h = 1.0;
-  restDensity = 1.0;
+  h = 1;
+  restDensity = 1;
   pressureStiffness = 100;
   viscosityMu = 0.22;
   maxSpeed = 15;

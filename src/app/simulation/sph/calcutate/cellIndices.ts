@@ -1,7 +1,11 @@
-import { Fn, instanceIndex, uint, atomicAdd } from "three/tsl";
+import { Fn, instanceIndex, uint, atomicAdd, atomicLoad } from "three/tsl";
 import * as THREE from "three/webgpu";
 import type { StorageBufferType } from "../../../types/BufferType";
-import { positionToCellIndex } from "../utils/positionToCellIndex";
+import {
+  coordToIndex,
+  positionToCellCoord,
+  positionToCellIndex,
+} from "../utils/positionToCellIndex";
 
 export function computeCellIndicesPass(
   cellIndicesBuffer: StorageBufferType,
@@ -19,19 +23,16 @@ export function computeCellIndicesPass(
     const pos = positionsBuffer.element(instanceIndex);
     const cellIndex_i = cellIndicesBuffer.element(instanceIndex);
 
-    const cellIndex = positionToCellIndex(
-      pos,
-      cellSize,
-      cellCountX,
-      cellCountY,
-      cellCountZ,
-      xMinCoord,
-      yMinCoord,
-      zMinCoord
-    )();
+    // @ts-ignore
+    //prettier-ignore
+    const cellIndexCoord = positionToCellCoord(pos, cellSize, cellCountX, cellCountY, cellCountZ, xMinCoord, yMinCoord, zMinCoord)
 
-    cellIndex_i.assign(cellIndex);
-    const cellCount_i = cellCountsBuffer.element(cellIndex);
+    // @ts-ignore
+    //prettier-ignore
+    const index = coordToIndex(cellIndexCoord, cellCountX, cellCountY)
+
+    cellIndex_i.assign(index);
+    const cellCount_i = cellCountsBuffer.element(index);
     atomicAdd(cellCount_i, uint(1));
   });
 }

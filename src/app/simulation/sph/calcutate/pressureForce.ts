@@ -46,114 +46,61 @@ export function computePressureForcePass(
     ).toVar();
     const pForce_i = vec3(0, 0, 0).toVar();
 
-    const cc = positionToCellCoord(
-      pos_i,
-      cellSize,
-      cellCountX,
-      cellCountY,
-      cellCountZ,
-      xMinCoord,
-      yMinCoord,
-      zMinCoord
-    )();
+    // @ts-ignore
+    //prettier-ignore
+    const cc = positionToCellCoord(pos_i, cellSize, cellCountX, cellCountY, cellCountZ, xMinCoord, yMinCoord, zMinCoord);
 
-    for (var dz = -1; dz <= 1; dz = dz + 1) {
+    const dz = int(-1).toVar();
+    Loop(dz.lessThanEqual(1), () => {
       const zc = clamp(cc.z.add(dz), int(0), int(cellCountZ).sub(int(1)));
-      for (var dy = -1; dy <= 1; dy = dy + 1) {
+      const dy = int(-1).toVar();
+      Loop(dy.lessThanEqual(1), () => {
         const yc = clamp(cc.y.add(dy), int(0), int(cellCountY).sub(int(1)));
-        for (var dx = -1; dx <= 1; dx = dx + 1) {
+        const dx = int(-1).toVar();
+        Loop(dx.lessThanEqual(1), () => {
           const xc = clamp(cc.x.add(dx), int(0), int(cellCountX).sub(int(1)));
-          const cellIndex = coordToIndex(
-            vec3(xc, yc, zc),
-            cellCountX,
-            cellCountY
-          )();
+          // @ts-ignore
+          //prettier-ignore
+          const cellIndex = coordToIndex(vec3(xc, yc, zc), cellCountX, cellCountY)
           const start = cellStartIndicesBuffer.element(cellIndex).toVar();
           const count = atomicLoad(cellCountsBuffer.element(cellIndex)).toVar();
           const end = start.add(count).toVar();
           let j = uint(start).toVar();
 
-          Loop(j.lessThan(end), () => {
-            const pos_j = positionsBuffer.element(j);
-            const dir = pos_j.sub(pos_i).toVar();
-            const r = dir.length().toVar();
-
-            If(r.greaterThan(float(0.001)).and(r.lessThan(h)), () => {
-              const t = float(h).sub(r).toVar();
-              const density_j = densitiesBuffer.element(j);
-              const _dir = dir.div(r).toVar();
-              const gradW = float(spiky).mul(t.mul(t)).mul(_dir).toVar();
-              const rhoj = max(density_j, float(1e-8)).toVar();
-              const press_j = pressuresBuffer.element(j);
-              const term = pressure_i
-                .div(density_i.mul(density_i))
-                .add(press_j.div(rhoj.mul(rhoj)))
-                .toVar();
-              const fi = float(mass)
-                .mul(float(mass))
-                .mul(term)
-                .mul(gradW)
-                .toVar();
-              pForce_i.addAssign(fi);
+          Loop(j.lessThan(end).and(j.notEqual(instanceIndex)), () => {
+            If(j.notEqual(instanceIndex), () => {
+              const pos_j = positionsBuffer.element(j);
+              const dir = pos_j.sub(pos_i).toVar();
+              const r = dir.length().toVar();
+              If(r.greaterThan(float(0.001)).and(r.lessThan(h)), () => {
+                const t = float(h).sub(r).toVar();
+                const density_j = densitiesBuffer.element(j);
+                const _dir = dir.div(r).toVar();
+                const gradW = float(spiky).mul(t.mul(t)).mul(_dir).toVar();
+                const rhoj = max(density_j, float(1e-8)).toVar();
+                const press_j = pressuresBuffer.element(j);
+                const term = pressure_i
+                  .div(density_i.mul(density_i))
+                  .add(press_j.div(rhoj.mul(rhoj)))
+                  .toVar();
+                const fi = float(mass)
+                  .mul(float(mass))
+                  .mul(term)
+                  .mul(gradW)
+                  .toVar();
+                pForce_i.addAssign(fi);
+              });
             });
-            // If(j.notEqual(instanceIndex), () => {
-            //   If(r.lessThan(h), () => {
-            //     const t = float(h).sub(r).toVar();
-            //     If(t.greaterThan(float(0.0)), () => {
-            //       const density_j = densitiesBuffer.element(j);
-            //       const _dir = dir.div(r).toVar();
-            //       const gradW = float(spiky).mul(t.mul(t)).mul(_dir).toVar();
-            //       const rhoj = max(density_j, float(1e-8)).toVar();
-            //       const press_j = pressuresBuffer.element(j);
-            //       const term = pressure_i
-            //         .div(density_i.mul(density_i))
-            //         .add(press_j.div(rhoj.mul(rhoj)))
-            //         .toVar();
-            //       const fi = float(mass)
-            //         .mul(float(mass))
-            //         .mul(term)
-            //         .mul(gradW)
-            //         .toVar();
-            //       pForce_i.addAssign(fi);
-            //     });
-            //   });
-            // });
+
             j.addAssign(uint(1));
           });
-        }
-      }
-    }
+          dx.addAssign(int(1));
+        });
+        dy.addAssign(int(1));
+      });
+      dz.addAssign(int(1));
+    });
 
-    // let j = uint(0).toVar();
-    // Loop(j.lessThan(particleCount), () => {
-    //   If(j.notEqual(instanceIndex), () => {
-    //     const pos_j = positionsBuffer.element(j);
-
-    //     const dir = pos_j.sub(pos_i).toVar();
-    //     const r = dir.length().toVar();
-    //     If(r.lessThan(h), () => {
-    //       const t = float(h).sub(r).toVar();
-    //       If(t.greaterThan(float(0.0)), () => {
-    //         const density_j = densitiesBuffer.element(j);
-    //         const _dir = dir.div(r).toVar();
-    //         const gradW = float(spiky).mul(t.mul(t)).mul(_dir).toVar();
-    //         const rhoj = max(density_j, float(1e-8)).toVar();
-    //         const press_j = pressuresBuffer.element(j);
-    //         const term = pressure_i
-    //           .div(density_i.mul(density_i))
-    //           .add(press_j.div(rhoj.mul(rhoj)))
-    //           .toVar();
-    //         const fi = float(mass)
-    //           .mul(float(mass))
-    //           .mul(term)
-    //           .mul(gradW)
-    //           .toVar();
-    //         pForce_i.addAssign(fi);
-    //       });
-    //     });
-    //   });
-    //   j.assign(j.add(uint(1)));
-    // });
     pressureForce_i.assign(pForce_i);
   });
 }

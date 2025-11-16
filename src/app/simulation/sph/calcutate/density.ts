@@ -40,78 +40,51 @@ export function computeDensityPass(
     const density = densitiesBuffer.element(instanceIndex);
     const rho0 = float(0.0).toVar();
 
-    const cc = positionToCellCoord(
-      pos_i,
-      cellSize,
-      cellCountX,
-      cellCountY,
-      cellCountZ,
-      xMinCoord,
-      yMinCoord,
-      zMinCoord
-    )();
+    // @ts-ignore
+    //prettier-ignore
+    const cc = positionToCellCoord(pos_i, cellSize, cellCountX, cellCountY, cellCountZ, xMinCoord, yMinCoord, zMinCoord);
 
-    for (var dz = -1; dz <= 1; dz = dz + 1) {
+    const dz = int(-1).toVar();
+
+    Loop(dz.lessThanEqual(1), () => {
       const zc = clamp(cc.z.add(dz), int(0), int(cellCountZ).sub(int(1)));
-      for (var dy = -1; dy <= 1; dy = dy + 1) {
+      // 各 z 反復の開始で dy をリセット
+      const dy = int(-1).toVar();
+      Loop(dy.lessThanEqual(1), () => {
         const yc = clamp(cc.y.add(dy), int(0), int(cellCountY).sub(int(1)));
-        for (var dx = -1; dx <= 1; dx = dx + 1) {
+        // 各 y 反復の開始で dx をリセット
+        const dx = int(-1).toVar();
+        Loop(dx.lessThanEqual(1), () => {
           const xc = clamp(cc.x.add(dx), int(0), int(cellCountX).sub(int(1)));
-          const cellIndex = coordToIndex(
-            vec3(xc, yc, zc),
-            cellCountX,
-            cellCountY
-          )();
+
+          // @ts-ignore
+          //prettier-ignore
+          const cellIndex = coordToIndex(vec3(xc, yc, zc), cellCountX, cellCountY)
+
           const start = cellStartIndicesBuffer.element(cellIndex).toVar();
           const count = atomicLoad(cellCountsBuffer.element(cellIndex)).toVar();
           const end = start.add(count).toVar();
           let j = uint(start).toVar();
 
-          Loop(j.lessThan(end), () => {
+          Loop(j.lessThan(end).and(j.notEqual(instanceIndex)), () => {
             const pos_j = positionsBuffer.element(j);
             const r = pos_j.sub(pos_i).toVar();
             const r2 = r.dot(r);
-            If(r2.greaterThan(float(0.0001)).and(r2.lessThan(h2)), () => {
+            If(r2.lessThan(h2), () => {
               const t = float(h2).sub(r2).toVar();
               const w = float(poly6Kernel).mul(pow(t, 3));
               rho0.addAssign(w.mul(mass));
             });
-            // If(j.notEqual(instanceIndex), () => {
-            //   If(r2.lessThan(h2), () => {
-            //     const t = float(h2).sub(r2).toVar();
-            //     const w = float(poly6Kernel).mul(pow(t, 3));
-            //     rho0.addAssign(w.mul(mass));
-            //   });
-            // });
             j.addAssign(uint(1));
           });
-        }
-      }
-    }
-
-    // let j = uint(0).toVar();
-    // Loop(j.lessThan(particleCount), () => {
-    //   If(j.notEqual(instanceIndex), () => {
-    //     const pos_j = positionsBuffer.element(j);
-    //     const r = pos_j.sub(pos_i).toVar();
-    //     const r2 = r.dot(r);
-
-    //     If(r2.lessThan(h2), () => {
-    //       const t = float(h2).sub(r2).toVar();
-    //       const w = float(poly6Kernel).mul(pow(t, 3));
-    //       rho0.addAssign(w.mul(mass));
-    //     });
-    //   });
-
-    //   j.assign(j.add(uint(1)));
-    // });
+          dx.addAssign(int(1));
+        });
+        dy.addAssign(int(1));
+      });
+      dz.addAssign(int(1));
+    });
 
     rho0.addAssign(float(mass).mul(float(poly6Kernel)).mul(float(h6)));
     density.assign(rho0);
-    // If(neighborCount.lessThan(float(2)), () => {
-    //   density.assign(float(888)); // 別のマーカー
-    // }).Else(() => {
-    //   density.assign(rho0);
-    // });
   });
 }
