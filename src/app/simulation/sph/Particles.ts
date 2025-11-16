@@ -296,11 +296,19 @@ export class Particles {
     const densityCompute = computeDensityPass(
       this.positionsBuffer,
       this.densitiesBuffer,
-      this.particleCount,
+      this.cellStartIndicesBuffer,
+      this.cellCountsBuffer,
       this.sphConfig.poly6Kernel,
       this.sphConfig.h2,
       this.sphConfig.h6,
-      this.sphConfig.mass
+      this.sphConfig.mass,
+      this.cellSize,
+      this.cellCountX,
+      this.cellCountY,
+      this.cellCountZ,
+      this.xMinCoord,
+      this.yMinCoord,
+      this.zMinCoord
     )().compute(this.particleCount);
     this.renderer.computeAsync(densityCompute);
   }
@@ -367,9 +375,9 @@ export class Particles {
     this.computeReorderParticle();
     this.computeSwitchBuffers();
     this.computeDensity();
-    this.computePressure();
-    this.computePressureForce();
-    this.computeViscosity();
+    // this.computePressure();
+    // this.computePressureForce();
+    // this.computeViscosity();
     this.computeIntegrate();
   }
 }
