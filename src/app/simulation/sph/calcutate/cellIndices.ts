@@ -1,4 +1,4 @@
-import { Fn, instanceIndex, uint, atomicAdd, atomicLoad } from "three/tsl";
+import { Fn, instanceIndex, atomicAdd, int } from "three/tsl";
 import * as THREE from "three/webgpu";
 import type { StorageBufferType } from "../../../types/BufferType";
 import {
@@ -33,6 +33,6 @@ export function computeCellIndicesPass(
 
     cellIndex_i.assign(index);
     const cellCount_i = cellCountsBuffer.element(index);
-    atomicAdd(cellCount_i, uint(1));
+    atomicAdd(cellCount_i, int(1));
   });
 }

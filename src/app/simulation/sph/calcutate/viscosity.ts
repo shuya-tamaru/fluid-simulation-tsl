@@ -5,7 +5,6 @@ import {
   If,
   instanceIndex,
   Loop,
-  uint,
   vec3,
   int,
   atomicLoad,
@@ -62,7 +61,7 @@ export function computeViscosityPass(
           const start = cellStartIndicesBuffer.element(cellIndex).toVar();
           const count = atomicLoad(cellCountsBuffer.element(cellIndex)).toVar();
           const end = start.add(count).toVar();
-          let j = uint(start).toVar();
+          let j = int(start).toVar();
 
           Loop(j.lessThan(end), () => {
             If(j.notEqual(instanceIndex), () => {
@@ -86,7 +85,7 @@ export function computeViscosityPass(
                 );
               });
             });
-            j.addAssign(uint(1));
+            j.addAssign(int(1));
           });
           dx.addAssign(int(1));
         });

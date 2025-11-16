@@ -10,7 +10,6 @@ import {
   int,
   Loop,
   max,
-  uint,
   vec3,
 } from "three/tsl";
 import {
@@ -65,7 +64,7 @@ export function computePressureForcePass(
           const start = cellStartIndicesBuffer.element(cellIndex).toVar();
           const count = atomicLoad(cellCountsBuffer.element(cellIndex)).toVar();
           const end = start.add(count).toVar();
-          let j = uint(start).toVar();
+          let j = int(start).toVar();
 
           Loop(j.lessThan(end).and(j.notEqual(instanceIndex)), () => {
             If(j.notEqual(instanceIndex), () => {
@@ -75,7 +74,10 @@ export function computePressureForcePass(
               If(r.greaterThan(float(0.001)).and(r.lessThan(h)), () => {
                 const t = float(h).sub(r).toVar();
                 const density_j = densitiesBuffer.element(j);
-                const _dir = dir.div(r).toVar();
+                const invR = float(1.0)
+                  .div(max(r, float(1e-6)))
+                  .toVar();
+                const _dir = dir.mul(invR).toVar();
                 const gradW = float(spiky).mul(t.mul(t)).mul(_dir).toVar();
                 const rhoj = max(density_j, float(1e-8)).toVar();
                 const press_j = pressuresBuffer.element(j);
@@ -92,7 +94,7 @@ export function computePressureForcePass(
               });
             });
 
-            j.addAssign(uint(1));
+            j.addAssign(int(1));
           });
           dx.addAssign(int(1));
         });

@@ -385,15 +385,19 @@ export class Particles {
   }
 
   public async compute() {
-    this.computeResetCalculation();
-    this.computeCellIndices();
-    this.computeCellStartIndices();
-    this.computeReorderParticle();
-    this.computeSwitchBuffers();
-    this.computeDensity();
-    this.computePressure();
-    this.computePressureForce();
-    this.computeViscosity();
-    this.computeIntegrate();
+    await this.computeResetCalculation();
+    await this.computeCellIndices();
+    await this.computeCellStartIndices();
+    await this.computeReorderParticle();
+    // const debug = new Uint32Array(
+    //   await this.renderer.getArrayBufferAsync(this.cellCountsBuffer.value)
+    // );
+    // console.log(debug);
+    await this.computeSwitchBuffers();
+    await this.computeDensity();
+    await this.computePressure();
+    await this.computePressureForce();
+    await this.computeViscosity();
+    await this.computeIntegrate();
   }
 }

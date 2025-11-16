@@ -8,7 +8,6 @@ import {
   int,
   Loop,
   pow,
-  uint,
   vec3,
 } from "three/tsl";
 import * as THREE from "three/webgpu";
@@ -64,7 +63,7 @@ export function computeDensityPass(
           const start = cellStartIndicesBuffer.element(cellIndex).toVar();
           const count = atomicLoad(cellCountsBuffer.element(cellIndex)).toVar();
           const end = start.add(count).toVar();
-          let j = uint(start).toVar();
+          let j = int(start).toVar();
 
           Loop(j.lessThan(end).and(j.notEqual(instanceIndex)), () => {
             const pos_j = positionsBuffer.element(j);
@@ -75,7 +74,7 @@ export function computeDensityPass(
               const w = float(poly6Kernel).mul(pow(t, 3));
               rho0.addAssign(w.mul(mass));
             });
-            j.addAssign(uint(1));
+            j.addAssign(int(1));
           });
           dx.addAssign(int(1));
         });

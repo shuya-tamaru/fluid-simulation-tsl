@@ -1,5 +1,5 @@
 import * as THREE from "three/webgpu";
-import { atomicStore, Fn, instanceIndex, uint } from "three/tsl";
+import { atomicStore, Fn, instanceIndex, int } from "three/tsl";
 import type { StorageBufferType } from "../../../types/BufferType";
 
 export function computeResetCalcPass(
@@ -7,7 +7,7 @@ export function computeResetCalcPass(
   cellCountsBuffer: StorageBufferType
 ): THREE.TSL.ShaderNodeFn<[]> {
   return Fn(() => {
-    atomicStore(cellCountsBuffer.element(instanceIndex), uint(0));
-    atomicStore(offsetsBuffer.element(instanceIndex), uint(0));
+    atomicStore(cellCountsBuffer.element(instanceIndex), int(0));
+    atomicStore(offsetsBuffer.element(instanceIndex), int(0));
   });
 }
