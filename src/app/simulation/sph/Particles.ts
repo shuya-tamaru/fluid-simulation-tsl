@@ -329,10 +329,18 @@ export class Particles {
       this.densitiesBuffer,
       this.pressuresBuffer,
       this.pressureForcesBuffer,
-      this.particleCount,
+      this.cellStartIndicesBuffer,
+      this.cellCountsBuffer,
       this.sphConfig.mass,
       this.sphConfig.h,
-      this.sphConfig.spiky
+      this.sphConfig.spiky,
+      this.cellSize,
+      this.cellCountX,
+      this.cellCountY,
+      this.cellCountZ,
+      this.xMinCoord,
+      this.yMinCoord,
+      this.zMinCoord
     )().compute(this.particleCount);
     this.renderer.computeAsync(pressureForceCompute);
   }
@@ -375,8 +383,8 @@ export class Particles {
     this.computeReorderParticle();
     this.computeSwitchBuffers();
     this.computeDensity();
-    // this.computePressure();
-    // this.computePressureForce();
+    this.computePressure();
+    this.computePressureForce();
     // this.computeViscosity();
     this.computeIntegrate();
   }
