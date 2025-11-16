@@ -265,7 +265,7 @@ export class Particles {
       this.cellStartIndicesBuffer,
       this.cellCountsBuffer,
       this.totalCellCount
-    )().compute(this.totalCellCount);
+    )().compute(1);
     this.renderer.computeAsync(cellStartIndicesCompute);
   }
 
@@ -351,11 +351,19 @@ export class Particles {
       this.velocitiesBuffer,
       this.densitiesBuffer,
       this.viscosityForcesBuffer,
-      this.particleCount,
+      this.cellStartIndicesBuffer,
+      this.cellCountsBuffer,
       this.sphConfig.viscosity,
       this.sphConfig.viscosityMu,
       this.sphConfig.h,
-      this.sphConfig.mass
+      this.sphConfig.mass,
+      this.cellSize,
+      this.cellCountX,
+      this.cellCountY,
+      this.cellCountZ,
+      this.xMinCoord,
+      this.yMinCoord,
+      this.zMinCoord
     )().compute(this.particleCount);
     this.renderer.computeAsync(viscosityCompute);
   }
@@ -385,7 +393,7 @@ export class Particles {
     this.computeDensity();
     this.computePressure();
     this.computePressureForce();
-    // this.computeViscosity();
+    this.computeViscosity();
     this.computeIntegrate();
   }
 }

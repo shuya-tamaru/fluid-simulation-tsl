@@ -68,16 +68,21 @@ export function computeDensityPass(
           let j = uint(start).toVar();
 
           Loop(j.lessThan(end), () => {
-            If(j.notEqual(instanceIndex), () => {
-              const pos_j = positionsBuffer.element(j);
-              const r = pos_j.sub(pos_i).toVar();
-              const r2 = r.dot(r);
-              If(r2.lessThan(h2), () => {
-                const t = float(h2).sub(r2).toVar();
-                const w = float(poly6Kernel).mul(pow(t, 3));
-                rho0.addAssign(w.mul(mass));
-              });
+            const pos_j = positionsBuffer.element(j);
+            const r = pos_j.sub(pos_i).toVar();
+            const r2 = r.dot(r);
+            If(r2.greaterThan(float(0.0001)).and(r2.lessThan(h2)), () => {
+              const t = float(h2).sub(r2).toVar();
+              const w = float(poly6Kernel).mul(pow(t, 3));
+              rho0.addAssign(w.mul(mass));
             });
+            // If(j.notEqual(instanceIndex), () => {
+            //   If(r2.lessThan(h2), () => {
+            //     const t = float(h2).sub(r2).toVar();
+            //     const w = float(poly6Kernel).mul(pow(t, 3));
+            //     rho0.addAssign(w.mul(mass));
+            //   });
+            // });
             j.addAssign(uint(1));
           });
         }
@@ -103,5 +108,10 @@ export function computeDensityPass(
 
     rho0.addAssign(float(mass).mul(float(poly6Kernel)).mul(float(h6)));
     density.assign(rho0);
+    // If(neighborCount.lessThan(float(2)), () => {
+    //   density.assign(float(888)); // 別のマーカー
+    // }).Else(() => {
+    //   density.assign(rho0);
+    // });
   });
 }

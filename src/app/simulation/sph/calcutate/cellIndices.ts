@@ -17,7 +17,7 @@ export function computeCellIndicesPass(
 ): THREE.TSL.ShaderNodeFn<[]> {
   return Fn(() => {
     const pos = positionsBuffer.element(instanceIndex);
-    const cellIndex_i = cellIndicesBuffer.element(instanceIndex).toVar();
+    const cellIndex_i = cellIndicesBuffer.element(instanceIndex);
 
     const cellIndex = positionToCellIndex(
       pos,

@@ -10,15 +10,12 @@ export function computeCellStartIndicesPass(
   return Fn(() => {
     const acc = uint(0).toVar();
 
-    const i = uint(0).toVar();
-
-    Loop(i.lessThan(totalCellCount), () => {
+    Loop(uint(totalCellCount), ({ i }) => {
       const startIndex = cellStartIndicesBuffer.element(i);
       startIndex.assign(acc);
 
-      const count = atomicLoad(cellCountsBuffer.element(i));
+      const count = atomicLoad(cellCountsBuffer.element(i)).toVar();
       acc.addAssign(count);
-      i.addAssign(uint(1));
     });
   });
 }
