@@ -1,11 +1,7 @@
-import { Fn, instanceIndex, atomicAdd, int } from "three/tsl";
+import { Fn, instanceIndex, atomicAdd, int, If } from "three/tsl";
 import * as THREE from "three/webgpu";
 import type { StorageBufferType } from "../../../types/BufferType";
-import {
-  coordToIndex,
-  positionToCellCoord,
-  positionToCellIndex,
-} from "../utils/positionToCellIndex";
+import { positionToCellIndex } from "../utils/positionToCellIndex";
 
 export function computeCellIndicesPass(
   cellIndicesBuffer: StorageBufferType,
@@ -17,22 +13,21 @@ export function computeCellIndicesPass(
   cellCountZ: number,
   xMinCoord: number,
   yMinCoord: number,
-  zMinCoord: number
+  zMinCoord: number,
+  particleCount: number
 ): THREE.TSL.ShaderNodeFn<[]> {
   return Fn(() => {
-    const pos = positionsBuffer.element(instanceIndex);
-    const cellIndex_i = cellIndicesBuffer.element(instanceIndex);
+    const i = instanceIndex.toVar();
+    If(i.lessThan(particleCount), () => {
+      const pos = positionsBuffer.element(instanceIndex);
+      const cellIndex_i = cellIndicesBuffer.element(instanceIndex);
 
-    // @ts-ignore
-    //prettier-ignore
-    const cellIndexCoord = positionToCellCoord(pos, cellSize, cellCountX, cellCountY, cellCountZ, xMinCoord, yMinCoord, zMinCoord)
+      // @ts-ignore
+      //prettier-ignore
+      const index = positionToCellIndex(pos, cellSize, cellCountX, cellCountY, cellCountZ, xMinCoord, yMinCoord, zMinCoord)
 
-    // @ts-ignore
-    //prettier-ignore
-    const index = coordToIndex(cellIndexCoord, cellCountX, cellCountY)
-
-    cellIndex_i.assign(index);
-    const cellCount_i = cellCountsBuffer.element(index);
-    atomicAdd(cellCount_i, int(1));
+      cellIndex_i.assign(index);
+      atomicAdd(cellCountsBuffer.element(index), int(1));
+    });
   });
 }

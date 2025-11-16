@@ -1,4 +1,4 @@
-import { clamp, Fn, int, vec3 } from "three/tsl";
+import { clamp, Fn, int, ivec3, vec3 } from "three/tsl";
 
 // @ts-ignore
 //prettier-ignore
@@ -7,15 +7,15 @@ export const positionToCellCoord = Fn(([position, cellSize, cellCountX, cellCoun
     .sub(vec3(xMinCoord, yMinCoord, zMinCoord))
     .div(vec3(cellSize))
     .toVar();
-  const cx = resolution.x.floor();
-  const cy = resolution.y.floor();
-  const cz = resolution.z.floor();
+  const cx = resolution.x.floor().toInt();
+  const cy = resolution.y.floor().toInt();
+  const cz = resolution.z.floor().toInt();
+
   const cxc = clamp(cx, int(0), int(cellCountX).sub(int(1)));
   const cyc = clamp(cy, int(0), int(cellCountY).sub(int(1)));
   const czc = clamp(cz, int(0), int(cellCountZ).sub(int(1)));
-  const c = vec3(cxc, cyc, czc);
 
-  return c;
+  return ivec3(cxc, cyc, czc);
 });
 
 // @ts-ignore
@@ -29,8 +29,7 @@ export const coordToIndex = Fn(([c, cellCountX, cellCountY]) => {
 export const positionToCellIndex = Fn(([position, cellSize, cellCountX, cellCountY, cellCountZ, xMinCoord, yMinCoord, zMinCoord]) => {
   // @ts-ignore
   const c = positionToCellCoord(position, cellSize, cellCountX, cellCountY, cellCountZ, xMinCoord, yMinCoord, zMinCoord)
-  // @ts-ignore
-  const index = coordToIndex(c, cellCountX, cellCountY)
   
-  return index;
+  // @ts-ignore
+  return coordToIndex(c, cellCountX, cellCountY)
 });

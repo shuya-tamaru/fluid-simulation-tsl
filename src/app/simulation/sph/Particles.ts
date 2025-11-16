@@ -132,7 +132,7 @@ export class Particles {
   }
 
   private createGeometry() {
-    this.sphereGeometry = new THREE.SphereGeometry(0.2, 1, 1);
+    this.sphereGeometry = new THREE.SphereGeometry(0.2, 4, 4);
   }
 
   private createMaterial() {
@@ -204,7 +204,13 @@ export class Particles {
   }
 
   private disposeParticleBuffers() {
+    this.cellIndicesBuffer.dispose();
+    this.cellCountsBuffer.dispose();
+    this.cellStartIndicesBuffer.dispose();
+    this.offsetsBuffer.dispose();
     this.positionsBuffer.dispose();
+    this.reorderedPositionsBuffer.dispose();
+    this.reorderedVelocitiesBuffer.dispose();
     this.velocitiesBuffer.dispose();
     this.densitiesBuffer.dispose();
     this.pressuresBuffer.dispose();
@@ -239,7 +245,8 @@ export class Particles {
   private async computeResetCalculation() {
     const resetCalculationCompute = computeResetCalcPass(
       this.offsetsBuffer,
-      this.cellCountsBuffer
+      this.cellCountsBuffer,
+      this.totalCellCount
     )().compute(this.totalCellCount);
     await this.renderer.computeAsync(resetCalculationCompute);
   }
@@ -255,7 +262,8 @@ export class Particles {
       this.cellCountZ,
       this.xMinCoord,
       this.yMinCoord,
-      this.zMinCoord
+      this.zMinCoord,
+      this.particleCount
     )().compute(this.particleCount);
     await this.renderer.computeAsync(cellIndicesCompute);
   }
@@ -277,7 +285,8 @@ export class Particles {
       this.positionsBuffer,
       this.velocitiesBuffer,
       this.reorderedPositionsBuffer,
-      this.reorderedVelocitiesBuffer
+      this.reorderedVelocitiesBuffer,
+      this.particleCount
     )().compute(this.particleCount);
     await this.renderer.computeAsync(reorderParticleCompute);
   }
@@ -287,7 +296,8 @@ export class Particles {
       this.positionsBuffer,
       this.velocitiesBuffer,
       this.reorderedPositionsBuffer,
-      this.reorderedVelocitiesBuffer
+      this.reorderedVelocitiesBuffer,
+      this.particleCount
     )().compute(this.particleCount);
     await this.renderer.computeAsync(switchBuffersCompute);
   }
@@ -308,7 +318,8 @@ export class Particles {
       this.cellCountZ,
       this.xMinCoord,
       this.yMinCoord,
-      this.zMinCoord
+      this.zMinCoord,
+      this.particleCount
     )().compute(this.particleCount);
     await this.renderer.computeAsync(densityCompute);
   }
@@ -318,7 +329,8 @@ export class Particles {
       this.densitiesBuffer,
       this.pressuresBuffer,
       this.sphConfig.restDensity,
-      this.sphConfig.pressureStiffness
+      this.sphConfig.pressureStiffness,
+      this.particleCount
     )().compute(this.particleCount);
     await this.renderer.computeAsync(pressureCompute);
   }
@@ -333,6 +345,7 @@ export class Particles {
       this.cellCountsBuffer,
       this.sphConfig.mass,
       this.sphConfig.h,
+      this.sphConfig.h2,
       this.sphConfig.spiky,
       this.cellSize,
       this.cellCountX,
@@ -340,7 +353,8 @@ export class Particles {
       this.cellCountZ,
       this.xMinCoord,
       this.yMinCoord,
-      this.zMinCoord
+      this.zMinCoord,
+      this.particleCount
     )().compute(this.particleCount);
     await this.renderer.computeAsync(pressureForceCompute);
   }
@@ -356,6 +370,7 @@ export class Particles {
       this.sphConfig.viscosity,
       this.sphConfig.viscosityMu,
       this.sphConfig.h,
+      this.sphConfig.h2,
       this.sphConfig.mass,
       this.cellSize,
       this.cellCountX,
@@ -363,7 +378,8 @@ export class Particles {
       this.cellCountZ,
       this.xMinCoord,
       this.yMinCoord,
-      this.zMinCoord
+      this.zMinCoord,
+      this.particleCount
     )().compute(this.particleCount);
     await this.renderer.computeAsync(viscosityCompute);
   }
@@ -379,7 +395,8 @@ export class Particles {
       this.sphConfig.restitution,
       this.boxWidth,
       this.boxHeight,
-      this.boxDepth
+      this.boxDepth,
+      this.particleCount
     )().compute(this.particleCount);
     await this.renderer.computeAsync(integrateCompute);
   }
@@ -389,13 +406,10 @@ export class Particles {
     await this.computeCellIndices();
     await this.computeCellStartIndices();
     await this.computeReorderParticle();
-    // const debug = new Uint32Array(
-    //   await this.renderer.getArrayBufferAsync(this.cellCountsBuffer.value)
-    // );
-    // console.log(debug);
     await this.computeSwitchBuffers();
     await this.computeDensity();
     await this.computePressure();
+
     await this.computePressureForce();
     await this.computeViscosity();
     await this.computeIntegrate();

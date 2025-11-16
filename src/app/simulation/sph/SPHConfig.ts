@@ -27,6 +27,7 @@ export class SPHConfig {
   get spiky() {
     return -45 / (Math.PI * this.h6);
   }
+
   get viscosity() {
     return 45 / (Math.PI * this.h6);
   }
