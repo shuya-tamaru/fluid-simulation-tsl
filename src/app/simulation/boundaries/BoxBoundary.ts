@@ -9,10 +9,8 @@ export class BoxBoundary {
   private depthNode!: UniformTypeOf<number>;
   private material!: THREE.MeshBasicNodeMaterial;
   private mesh!: THREE.Mesh;
-  private boundaryConfig!: BoundaryConfig;
 
   constructor(boundaryConfig: BoundaryConfig) {
-    this.boundaryConfig = boundaryConfig;
     this.widthNode = boundaryConfig.width;
     this.heightNode = boundaryConfig.height;
     this.depthNode = boundaryConfig.depth;

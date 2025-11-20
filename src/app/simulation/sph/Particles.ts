@@ -34,7 +34,6 @@ export class Particles {
   private boxDepth!: UniformTypeOf<number>;
   public particleCount!: number;
   private sphConfig!: SPHConfig;
-  private boundaryConfig!: BoundaryConfig;
 
   private cellIndicesBuffer!: StorageBufferType;
   private cellCountsBuffer!: StorageBufferType;
