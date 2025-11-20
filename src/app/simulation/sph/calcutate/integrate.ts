@@ -33,26 +33,25 @@ export function computeIntegratePass(
       const vel = velocitiesBuffer.element(i);
       const pressureForce = pressureForcesBuffer.element(i);
       const viscosityForce = viscosityForcesBuffer.element(i);
-      const invMass = float(1.0)
-        .div(max(float(mass), float(1e-8)))
-        .toVar();
+      const invMass = float(1.0).div(max(float(mass), float(1e-8)));
 
       const gravity = vec3(0, -9.8, 0).toVar();
       const acceleration = pressureForce
         .add(viscosityForce)
         .mul(invMass)
-        .add(gravity)
-        .toVar();
+        .add(gravity);
+
       const newVel = vel.add(acceleration.mul(float(delta))).toVar();
       const newPos = pos.add(newVel.mul(float(delta))).toVar();
+      const esp = float(1e-2);
 
       If(abs(newPos.x).greaterThan(boxWidth.div(2)), () => {
-        newPos.x.assign(boxWidth.div(2).mul(sign(newPos.x)));
+        newPos.x.assign(boxWidth.div(2).sub(esp).mul(sign(newPos.x)));
         newVel.x.mulAssign(float(-1.0).mul(float(1.0).sub(restitution)));
       });
 
       If(abs(newPos.y).greaterThan(boxHeight.div(2)), () => {
-        newPos.y.assign(boxHeight.div(2).mul(sign(newPos.y)));
+        newPos.y.assign(boxHeight.div(2).sub(esp).mul(sign(newPos.y)));
         newVel.y.mulAssign(float(-1.0).mul(float(1.0).sub(restitution)));
       });
 

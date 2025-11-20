@@ -15,6 +15,7 @@ export function computePressurePass(
       const pressure_i = pressuresBuffer.element(instanceIndex);
       const density = densitiesBuffer.element(instanceIndex);
       const rho0 = max(density, float(1e-8));
+
       const pressure = max(
         float(pressureStiffness).mul(rho0.sub(restDensity)),
         float(0.0)

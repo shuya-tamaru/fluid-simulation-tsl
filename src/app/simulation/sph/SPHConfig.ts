@@ -4,9 +4,9 @@ export class SPHConfig {
   restitution = 0.1;
   mass = 0.2;
   h = 1;
-  restDensity = 0.8;
+  restDensity = 1;
   pressureStiffness = 100;
-  viscosityMu = 0.12;
+  viscosityMu = 0.22;
   maxSpeed = 15;
 
   get h2() {

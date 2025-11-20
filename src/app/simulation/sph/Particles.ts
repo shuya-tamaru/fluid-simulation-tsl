@@ -120,7 +120,7 @@ export class Particles {
       const pos = this.positionsBuffer.element(instanceIndex);
 
       const x = hash(instanceIndex.mul(3)).sub(0.5).mul(this.boxWidth);
-      const y = hash(instanceIndex.mul(5)).sub(0.5).mul(this.boxHeight);
+      const y = hash(instanceIndex.mul(3)).sub(0.5).mul(this.boxHeight);
       const z = hash(instanceIndex.mul(7)).sub(0.5).mul(this.boxDepth);
 
       const initialPosition = vec3(x, y, z);
@@ -132,7 +132,7 @@ export class Particles {
   }
 
   private createGeometry() {
-    this.sphereGeometry = new THREE.SphereGeometry(0.2, 4, 4);
+    this.sphereGeometry = new THREE.SphereGeometry(0.2, 6, 6);
   }
 
   private createMaterial() {
