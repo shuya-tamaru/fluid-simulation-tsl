@@ -7,6 +7,7 @@ import { Particles } from "./simulation/sph/Particles";
 import { ParamsControls } from "./utils/ParamsControls";
 import { SPHConfig } from "./simulation/sph/SPHConfig";
 import { BoundaryConfig } from "./simulation/boundaries/BoundaryConfig";
+import Stats from "three/addons/libs/stats.module.js";
 
 export class App {
   private sceneManager!: SceneManager;
@@ -16,6 +17,7 @@ export class App {
   private boxBoundary!: BoxBoundary;
   private particles!: Particles;
   private paramsControls!: ParamsControls;
+  private stats!: Stats;
 
   private width: number;
   private height: number;
@@ -39,6 +41,7 @@ export class App {
     await this.initializeManagers();
 
     this.addObjectsToScene();
+    this.initializeStats();
     this.setupEventListeners();
     this.startAnimation();
   }
@@ -73,6 +76,19 @@ export class App {
     this.particles.addToScene(this.sceneManager.scene);
   }
 
+  private initializeStats(): void {
+    this.stats = new Stats();
+    // 0: fps, 1: ms, 2: mb. デフォルト: 0
+    this.stats.showPanel(0);
+    Object.assign(this.stats.dom.style, {
+      position: "fixed",
+      left: "0px",
+      top: "0px",
+      zIndex: "10000",
+    });
+    document.body.appendChild(this.stats.dom);
+  }
+
   private setupEventListeners(): void {
     window.addEventListener("resize", this.handleResize);
   }
@@ -86,14 +102,16 @@ export class App {
     this.rendererManager.resize(this.width, this.height);
   };
 
-  private animate = (): void => {
+  private animate = async (): Promise<void> => {
     this.animationId = requestAnimationFrame(this.animate);
+    if (this.stats) this.stats.begin();
     this.controlsManager.update();
-    this.particles.compute();
+    await this.particles.compute();
     this.rendererManager.render(
       this.sceneManager.scene,
       this.cameraManager.camera
     );
+    if (this.stats) this.stats.end();
   };
 
   private startAnimation(): void {
@@ -105,6 +123,9 @@ export class App {
       cancelAnimationFrame(this.animationId);
     }
     window.removeEventListener("resize", this.handleResize);
+    if (this.stats && this.stats.dom && this.stats.dom.parentElement) {
+      this.stats.dom.parentElement.removeChild(this.stats.dom);
+    }
   }
 
   public getParamsControls(): ParamsControls {

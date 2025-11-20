@@ -1,48 +1,122 @@
-import { float, Fn, If, instanceIndex, Loop, max, uint, vec3 } from "three/tsl";
+import {
+  float,
+  Fn,
+  If,
+  instanceIndex,
+  Loop,
+  vec3,
+  int,
+  atomicLoad,
+  max,
+  dot,
+  inverseSqrt,
+} from "three/tsl";
 import * as THREE from "three/webgpu";
 import type { StorageBufferType } from "../../../types/BufferType";
+import {
+  coordToIndex,
+  positionToCellCoord,
+} from "../utils/positionToCellIndex";
 
 export function computeViscosityPass(
   positionsBuffer: StorageBufferType,
   velocitiesBuffer: StorageBufferType,
   densitiesBuffer: StorageBufferType,
   viscosityForcesBuffer: StorageBufferType,
-  particleCount: number,
+  cellStartIndicesBuffer: StorageBufferType,
+  cellCountsBuffer: StorageBufferType,
   viscosity: number,
   viscosityMu: number,
   h: number,
-  mass: number
+  h2: number,
+  mass: number,
+  cellSize: number,
+  cellCountX: number,
+  cellCountY: number,
+  cellCountZ: number,
+  xMinCoord: number,
+  yMinCoord: number,
+  zMinCoord: number,
+  particleCount: number
 ): THREE.TSL.ShaderNodeFn<[]> {
   return Fn(() => {
-    const pos_i = positionsBuffer.element(instanceIndex);
-    const vel_i = velocitiesBuffer.element(instanceIndex);
-    const viscosity_i = viscosityForcesBuffer.element(instanceIndex);
-    const density_i = max(densitiesBuffer.element(instanceIndex), float(1e-8)).toVar();
-    const viscosityForce_i = vec3(0, 0, 0).toVar();
+    const i = instanceIndex.toVar();
+    If(i.lessThan(particleCount), () => {
+      const pos_i = positionsBuffer.element(i);
+      const vel_i = velocitiesBuffer.element(i);
+      const viscosity_i = viscosityForcesBuffer.element(i);
+      const density_i = densitiesBuffer.element(i);
+      const rho_i = max(density_i, float(1e-8)).toVar();
+      const viscosityForce_i = vec3(0, 0, 0).toVar();
 
-    let j = uint(0).toVar();
-    Loop(j.lessThan(particleCount), () => {
-      If(j.notEqual(instanceIndex), () => {
-        const pos_j = positionsBuffer.element(j);
-        const dist = pos_j.sub(pos_i).toVar();
-        const r = dist.length().toVar();
-        If(r.lessThan(h), () => {
-          const lapW = float(viscosity).mul(float(h).sub(r)).toVar();
-          const density_j = max(densitiesBuffer.element(j), float(1e-8)).toVar();
-          const vel_j = velocitiesBuffer.element(j);
-          const invRhoAvg = float(2.0).div(density_i.add(density_j)).toVar();
-          viscosityForce_i.addAssign(
-            float(viscosityMu)
-              .mul(float(mass))
-              .mul(vel_j.sub(vel_i))
-              .mul(invRhoAvg)
-              .mul(lapW)
-              .toVar()
-          );
+      // @ts-ignore
+      //prettier-ignore
+      const cc = positionToCellCoord(pos_i, cellSize, cellCountX, cellCountY, cellCountZ, xMinCoord, yMinCoord, zMinCoord);
+
+      const dz = int(-1).toVar();
+      Loop(dz.lessThanEqual(1), () => {
+        const zTarget = cc.z.add(dz);
+        const dy = int(-1).toVar();
+        Loop(dy.lessThanEqual(1), () => {
+          const yTarget = cc.y.add(dy);
+          const dx = int(-1).toVar();
+          Loop(dx.lessThanEqual(1), () => {
+            const xTarget = cc.x.add(dx);
+            const isValidCell = xTarget
+              .greaterThanEqual(0)
+              .and(xTarget.lessThan(cellCountX))
+              .and(yTarget.greaterThanEqual(0))
+              .and(yTarget.lessThan(cellCountY))
+              .and(zTarget.greaterThanEqual(0))
+              .and(zTarget.lessThan(cellCountZ));
+
+            If(isValidCell, () => {
+              // @ts-ignore
+              //prettier-ignore
+              const cellIndex = coordToIndex(vec3(xTarget, yTarget, zTarget), cellCountX, cellCountY);
+              const start = cellStartIndicesBuffer.element(cellIndex).toVar();
+              const count = atomicLoad(cellCountsBuffer.element(cellIndex));
+              const end = start.add(count).toVar();
+              let j = int(start).toVar();
+
+              Loop(j.lessThan(end), () => {
+                If(j.notEqual(i), () => {
+                  const pos_j = positionsBuffer.element(j);
+                  const d = pos_i.sub(pos_j);
+                  const r2 = dot(d, d);
+                  If(r2.lessThan(h2), () => {
+                    const invR = inverseSqrt(max(r2, float(1e-8).mul(h2)));
+                    const r = float(1.0).div(invR);
+                    const t = float(h).sub(r);
+                    If(t.greaterThan(float(0.0)), () => {
+                      const lapW = float(viscosity).mul(float(h).sub(r));
+                      const density_j = densitiesBuffer.element(j);
+                      const rho_j = max(density_j, float(1e-8));
+                      const vel_j = velocitiesBuffer.element(j);
+                      const invRhoAvg = float(2.0)
+                        .div(rho_i.add(rho_j))
+                        .toVar();
+                      viscosityForce_i.addAssign(
+                        float(viscosityMu)
+                          .mul(mass)
+                          .mul(vel_j.sub(vel_i))
+                          .mul(invRhoAvg)
+                          .mul(lapW)
+                      );
+                    });
+                  });
+                });
+                j.addAssign(int(1));
+              });
+            });
+            dx.addAssign(int(1));
+          });
+          dy.addAssign(int(1));
         });
+        dz.addAssign(int(1));
       });
-      j.assign(j.add(uint(1)));
+
+      viscosity_i.assign(viscosityForce_i);
     });
-    viscosity_i.assign(viscosityForce_i);
   });
 }
