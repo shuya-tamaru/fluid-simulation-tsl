@@ -1,13 +1,13 @@
 export class SPHConfig {
   particleCount = 10000;
   delta = 1 / 60;
-  restitution = 0.1;
+  restitution = 0.3;
   mass = 0.2;
   h = 1;
   restDensity = 1;
   pressureStiffness = 100;
   viscosityMu = 0.22;
-  maxSpeed = 15;
+  maxSpeed = 20;
 
   get h2() {
     return Math.pow(this.h, 2);
