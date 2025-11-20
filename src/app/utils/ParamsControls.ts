@@ -39,7 +39,7 @@ export class ParamsControls {
         this.boxBoundary.updateSizes();
       });
     this.gui
-      .add(this.sphConfig, "particleCount", 1000, 20000, 1000)
+      .add(this.sphConfig, "particleCount", 1000, 40000, 1000)
       .name("Particle Count")
       .onChange(async (value: number) => {
         await this.particles.updateParticleCount(value);
