@@ -1,5 +1,5 @@
 export class SPHConfig {
-  particleCount = 25000;
+  particleCount = 30000;
   delta = 1 / 60;
   restitution = 0.3;
   mass = 0.2;

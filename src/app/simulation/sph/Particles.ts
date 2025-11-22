@@ -1,19 +1,25 @@
 import {
-  float,
   Fn,
   instancedArray,
-  instanceIndex,
+  uv,
+  dot,
+  If,
+  Discard,
+  positionWorld,
+  cameraPosition,
+  vec4,
   vec3,
-  positionLocal,
   normalLocal,
+  float,
   max,
+  positionLocal,
 } from "three/tsl";
 import * as THREE from "three/webgpu";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import type { StorageBufferType } from "../../types/BufferType";
 import type { UniformTypeOf } from "../../types/UniformType";
 import { SPHConfig } from "./SPHConfig";
 import type { BoundaryConfig } from "../boundaries/BoundaryConfig";
-import { ParticleHelper } from "./helper/ParticleHelper";
 import {
   SphCompute,
   type SphBuffers,
@@ -43,6 +49,7 @@ export class Particles {
 
   private renderer!: THREE.WebGPURenderer;
   private scene!: THREE.Scene;
+  private aspect!: number;
 
   private sphereGeometry!: THREE.SphereGeometry;
   private sphereMaterial!: THREE.MeshBasicNodeMaterial;
@@ -59,12 +66,17 @@ export class Particles {
 
   private sphCompute!: SphCompute;
 
-  //params
+  //render
+  private particleRT!: THREE.RenderTarget;
+  private particleScene!: THREE.Scene;
+  private particleCamera!: THREE.PerspectiveCamera;
+  private ptControls!: OrbitControls;
 
   constructor(
     renderer: THREE.WebGPURenderer,
     sphConfig: SPHConfig,
-    boundaryConfig: BoundaryConfig
+    boundaryConfig: BoundaryConfig,
+    aspect: number
   ) {
     this.renderer = renderer;
     this.sphConfig = sphConfig;
@@ -72,7 +84,7 @@ export class Particles {
     this.boxWidth = boundaryConfig.width;
     this.boxHeight = boundaryConfig.height;
     this.boxDepth = boundaryConfig.depth;
-
+    this.aspect = aspect;
     this.cellSize = this.sphConfig.h;
     this.cellCountX = Math.floor(this.boxWidth.value / this.cellSize);
     this.cellCountY = Math.floor(this.boxHeight.value / this.cellSize);
@@ -90,6 +102,7 @@ export class Particles {
     this.createGeometry();
     this.createMaterial();
     this.createMesh();
+    this.createParticleRenderTarget();
   }
 
   private initializeParticleBuffers() {
@@ -154,14 +167,13 @@ export class Particles {
   }
 
   private createGeometry() {
-    this.sphereGeometry = new THREE.SphereGeometry(0.2, 6, 6);
+    this.sphereGeometry = new THREE.SphereGeometry(0.1, 6, 6);
   }
 
   private createMaterial() {
     this.sphereMaterial = new THREE.MeshBasicNodeMaterial({
       side: THREE.DoubleSide,
     });
-
     this.sphereMaterial.positionNode = positionLocal.add(
       this.positionsBuffer.toAttribute()
     );
@@ -169,24 +181,20 @@ export class Particles {
   }
 
   private updateMaterialColorNode() {
-    this.sphereMaterial.colorNode = Fn(() => {
+    this.sphereMaterial.fragmentNode = Fn(() => {
+      const centerOffset = uv().sub(0.5).mul(2);
+      const sqrDst = dot(centerOffset, centerOffset);
+      If(sqrDst.greaterThan(1.0), () => {
+        Discard();
+      });
+
       const normal = normalLocal.toVar();
       const lightDir = vec3(0.3, 1.0, 0.5).normalize().toVar();
       const ambient = float(0.2).toVar();
       const diffuse = max(normal.dot(lightDir), float(0.0)).toVar();
-      const speed = this.velocitiesBuffer
-        .element(instanceIndex)
-        .length()
-        .toVar();
-
-      const baseColor = ParticleHelper.getColorByVelocity(
-        speed,
-        this.sphConfig.maxSpeed
-      )();
-      const shaded = baseColor
-        .mul(ambient.add(diffuse.mul(float(2.2))))
-        .toVar();
-      return shaded;
+      const depth = positionWorld.sub(cameraPosition).length().div(60);
+      const shaded = depth.mul(ambient.add(diffuse.mul(float(2.2)))).toVar();
+      return vec4(vec3(shaded), 1);
     })();
   }
 
@@ -200,7 +208,51 @@ export class Particles {
 
   public addToScene(scene: THREE.Scene) {
     this.scene = scene;
-    scene.add(this.sphereMesh);
+    // scene.add(this.sphereMesh);
+  }
+
+  private createParticleRenderTarget() {
+    this.particleRT = new THREE.RenderTarget(
+      window.innerWidth,
+      window.innerHeight,
+      {
+        type: THREE.FloatType,
+      }
+    );
+    this.particleScene = new THREE.Scene();
+    this.particleCamera = new THREE.PerspectiveCamera(
+      60,
+      this.aspect,
+      0.1,
+      100
+    );
+    this.particleCamera.position.set(-15, 15, 30);
+    this.particleScene.add(this.sphereMesh);
+    this.ptControls = new OrbitControls(
+      this.particleCamera,
+      this.renderer.domElement
+    );
+    this.ptControls.enableDamping = true;
+    this.ptControls.minDistance = 0.1;
+    this.ptControls.maxDistance = 100;
+    this.ptControls.enableZoom = true;
+    this.ptControls.enablePan = true;
+    this.ptControls.enableRotate = true;
+  }
+
+  public updateParticleCamera(aspect: number) {
+    this.particleCamera.aspect = aspect;
+    this.particleCamera.updateProjectionMatrix();
+  }
+
+  public async renderParticlesToRT() {
+    this.renderer.setRenderTarget(this.particleRT);
+    await this.renderer.renderAsync(this.particleScene, this.particleCamera);
+    this.renderer.setRenderTarget(null);
+  }
+
+  public getRenderTexture(): THREE.Texture {
+    return this.particleRT.texture;
   }
 
   private disposeParticleBuffers() {

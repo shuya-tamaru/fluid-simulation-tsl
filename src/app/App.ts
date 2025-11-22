@@ -8,6 +8,9 @@ import { ParamsControls } from "./utils/ParamsControls";
 import { SPHConfig } from "./simulation/sph/SPHConfig";
 import { BoundaryConfig } from "./simulation/boundaries/BoundaryConfig";
 import Stats from "three/addons/libs/stats.module.js";
+import * as THREE from "three/webgpu";
+import { float, Fn, texture, uv, vec2 } from "three/tsl";
+import { gaussianBlur } from "three/examples/jsm/tsl/display/GaussianBlurNode.js";
 
 export class App {
   private sceneManager!: SceneManager;
@@ -29,6 +32,10 @@ export class App {
   private sphConfig!: SPHConfig;
   private boundaryConfig!: BoundaryConfig;
 
+  private debugScene!: THREE.Scene;
+  private debugCamera!: THREE.OrthographicCamera;
+  private debugQuad!: THREE.Mesh;
+
   constructor() {
     this.width = window.innerWidth;
     this.height = window.innerHeight;
@@ -39,6 +46,7 @@ export class App {
 
   private async initializeApp(): Promise<void> {
     await this.initializeManagers();
+    this.setupDebugView();
 
     this.addObjectsToScene();
     this.initializeStats();
@@ -60,7 +68,8 @@ export class App {
     this.particles = new Particles(
       this.rendererManager.renderer,
       this.sphConfig,
-      this.boundaryConfig
+      this.boundaryConfig,
+      this.aspect
     );
     await this.particles.initialize();
     this.paramsControls = new ParamsControls(
@@ -100,17 +109,64 @@ export class App {
 
     this.cameraManager.updateAspect(this.aspect);
     this.rendererManager.resize(this.width, this.height);
+    this.updateDebugView();
   };
+
+  private setupDebugView() {
+    this.debugScene = new THREE.Scene();
+
+    this.debugCamera = new THREE.OrthographicCamera(
+      -this.aspect,
+      this.aspect,
+      1,
+      -1,
+      0,
+      10
+    );
+    this.debugCamera.position.z = 2;
+
+    const mat = new THREE.MeshBasicMaterial({
+      side: THREE.DoubleSide,
+    });
+    mat.fragmentNode = Fn(() => {
+      let texUV = uv().toVar();
+      texUV.y = float(1.0).sub(texUV.y);
+      const tex = texture(this.particles.getRenderTexture(), texUV);
+      const direction = vec2(1.0, 1.0); // ブラー方向（1,0）→横 / (0,1)→縦 / (1,1)→全体
+      return gaussianBlur(tex, direction, 3);
+    })();
+
+    this.debugQuad = new THREE.Mesh(
+      new THREE.PlaneGeometry(2 * this.aspect, 2),
+      mat
+    );
+
+    this.debugScene.add(this.debugQuad);
+  }
+
+  private updateDebugView(): void {
+    // Update debug camera for new aspect ratio
+    this.debugCamera.left = -this.aspect;
+    this.debugCamera.right = this.aspect;
+    this.debugCamera.updateProjectionMatrix();
+
+    // Update debug quad geometry for new aspect ratio
+    this.debugQuad.geometry.dispose();
+    this.debugQuad.geometry = new THREE.PlaneGeometry(2 * this.aspect, 2);
+  }
 
   private animate = async (): Promise<void> => {
     this.animationId = requestAnimationFrame(this.animate);
     if (this.stats) this.stats.begin();
-    this.controlsManager.update();
+    // this.controlsManager.update();
+    await this.particles.renderParticlesToRT();
     await this.particles.compute();
-    this.rendererManager.render(
-      this.sceneManager.scene,
-      this.cameraManager.camera
-    );
+    // this.rendererManager.render(
+    //   this.sceneManager.scene,
+    //   this.cameraManager.camera
+    // );
+    this.rendererManager.render(this.debugScene, this.debugCamera);
+
     if (this.stats) this.stats.end();
   };
 
