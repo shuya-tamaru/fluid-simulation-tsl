@@ -37,7 +37,7 @@ export class BoxBoundary {
 
   private updateMaterialOpacityNode(): void {
     this.material.opacityNode = Fn(() => {
-      const edgeWidth = float(0.05);
+      const edgeWidth = float(0.0);
       const isXEdge = abs(positionLocal.x).greaterThan(
         this.widthNode.div(2).sub(edgeWidth)
       );
