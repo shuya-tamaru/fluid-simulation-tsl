@@ -55,6 +55,11 @@ export function computeIntegratePass(
         newVel.y.mulAssign(float(-1.0).mul(float(1.0).sub(restitution)));
       });
 
+      // If(newPos.y.lessThan(boxHeight.div(2).negate()), () => {
+      //   newPos.y.assign(boxHeight.div(2).add(esp).mul(sign(newPos.y)));
+      //   newVel.y.mulAssign(float(-1.0).mul(float(1.0).sub(restitution)));
+      // });
+
       If(abs(newPos.z).greaterThan(boxDepth.div(2)), () => {
         newPos.z.assign(boxDepth.div(2).mul(sign(newPos.z)));
         newVel.z.mulAssign(float(-1.0).mul(float(1.0).sub(restitution)));
