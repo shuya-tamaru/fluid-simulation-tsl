@@ -1,5 +1,131 @@
+:root {
+  --panel-bg: rgba(9, 16, 28, 0.58);
+  --panel-border: rgba(148, 163, 184, 0.22);
+  --text: #eef4fa;
+  --accent: #22d3ee;
+  font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+}
+
 body {
   margin: 0;
   overflow: hidden;
   background-color: #000;
+}
+
+/* Bottom-centre control bar */
+.control-bar {
+  position: fixed;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 18px;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 10px 32px rgba(2, 8, 20, 0.45);
+}
+
+.splash-button {
+  padding: 11px 26px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #0e7490, #2563eb);
+  color: #fff;
+  font: 600 15px/1.2 inherit;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 0 4px 18px rgba(14, 116, 144, 0.5);
+  transition: filter 0.15s ease, transform 0.08s ease;
+}
+.splash-button:hover { filter: brightness(1.15); }
+.splash-button:active { transform: scale(0.96); }
+.splash-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+.render-mode-switch {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  background: rgba(30, 41, 59, 0.6);
+  font: 500 13px/1.2 inherit;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.render-mode-switch:hover { background: rgba(51, 65, 85, 0.7); }
+.render-mode-switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+.mode-label {
+  color: rgba(238, 244, 250, 0.4);
+  transition: color 0.15s ease;
+}
+.mode-label.active { color: var(--text); }
+
+.mode-track {
+  position: relative;
+  width: 34px;
+  height: 18px;
+  border-radius: 9px;
+  background: rgba(34, 211, 238, 0.4);
+  flex: none;
+}
+.mode-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(2, 8, 20, 0.5);
+  transition: transform 0.18s ease;
+}
+.render-mode-switch.particles .mode-knob { transform: translateX(16px); }
+
+.water-debug {
+  padding: 10px 12px;
+  background: rgba(30, 41, 59, 0.6);
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  font: 500 13px/1.2 inherit;
+  cursor: pointer;
+}
+.water-debug:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+/* Corner title */
+.app-title {
+  position: fixed;
+  left: 16px;
+  bottom: 18px;
+  z-index: 90;
+  color: rgba(238, 244, 250, 0.8);
+  font: 600 13px/1.35 inherit;
+  letter-spacing: 0.03em;
+  text-shadow: 0 1px 8px rgba(2, 8, 20, 0.6);
+  pointer-events: none;
+  user-select: none;
+}
+.app-title small {
+  display: block;
+  font-weight: 400;
+  font-size: 11px;
+  color: rgba(238, 244, 250, 0.55);
+}
+
+/* lil-gui: soften to match the panels */
+.lil-gui {
+  --background-color: rgba(9, 16, 28, 0.72) !important;
+  --widget-color: rgba(30, 41, 59, 0.85) !important;
+  --title-background-color: rgba(15, 23, 42, 0.85) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-radius: 0 0 0 12px;
 }

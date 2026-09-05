@@ -1,17 +1,4 @@
-import {
-  float,
-  Fn,
-  hash,
-  instancedArray,
-  instanceIndex,
-  vec3,
-  positionLocal,
-  normalLocal,
-  clamp,
-  If,
-  mix,
-  max,
-} from "three/tsl";
+import { Fn, exp, hash, instancedArray, instanceIndex, vec3 } from "three/tsl";
 import * as THREE from "three/webgpu";
 import type { StorageBufferType } from "../../types/BufferType";
 import { computeDensityPass } from "./calcutate/density";
@@ -49,12 +36,8 @@ export class Particles {
   private viscosityForcesBuffer!: StorageBufferType;
 
   private renderer!: THREE.WebGPURenderer;
-  private scene!: THREE.Scene;
 
-  private sphereGeometry!: THREE.SphereGeometry;
-  private sphereMaterial!: THREE.MeshBasicNodeMaterial;
-  private sphereMesh!: THREE.InstancedMesh;
-
+  private xMin!: number;
   private cellSize!: number;
   private cellCountX!: number;
   private cellCountY!: number;
@@ -78,22 +61,22 @@ export class Particles {
     this.boxHeight = boundaryConfig.height;
     this.boxDepth = boundaryConfig.depth;
 
+    this.xMin = boundaryConfig.xMin;
+    // Size the grid for the slider maxima, not the current box: box resizes
+    // at runtime must never push particles outside the neighbour grid.
     this.cellSize = this.sphConfig.h;
-    this.cellCountX = Math.floor(this.boxWidth.value / this.cellSize);
-    this.cellCountY = Math.floor(this.boxHeight.value / this.cellSize);
-    this.cellCountZ = Math.floor(this.boxDepth.value / this.cellSize);
+    this.cellCountX = Math.ceil(boundaryConfig.maxWidth / this.cellSize);
+    this.cellCountY = Math.ceil(boundaryConfig.maxHeight / this.cellSize);
+    this.cellCountZ = Math.ceil(boundaryConfig.maxDepth / this.cellSize);
     this.totalCellCount = this.cellCountX * this.cellCountY * this.cellCountZ;
-    this.xMinCoord = -this.boxWidth.value / 2;
-    this.yMinCoord = -this.boxHeight.value / 2;
-    this.zMinCoord = -this.boxDepth.value / 2;
+    this.xMinCoord = boundaryConfig.xMin;
+    this.yMinCoord = -boundaryConfig.maxHeight / 2;
+    this.zMinCoord = -boundaryConfig.maxDepth / 2;
   }
 
   public async initialize() {
     this.initializeParticleBuffers();
     await this.initializeParticlePositions();
-    this.createGeometry();
-    this.createMaterial();
-    this.createMesh();
   }
 
   private initializeParticleBuffers() {
@@ -118,8 +101,8 @@ export class Particles {
     const init = Fn(() => {
       const pos = this.positionsBuffer.element(instanceIndex);
 
-      const x = hash(instanceIndex.mul(3)).sub(0.5).mul(this.boxWidth);
-      const y = hash(instanceIndex.mul(3)).sub(0.5).mul(this.boxHeight);
+      const x = hash(instanceIndex.mul(3)).mul(this.boxWidth).add(this.xMin);
+      const y = hash(instanceIndex.mul(5).add(1)).sub(0.5).mul(this.boxHeight);
       const z = hash(instanceIndex.mul(7)).sub(0.5).mul(this.boxDepth);
 
       const initialPosition = vec3(x, y, z);
@@ -128,78 +111,6 @@ export class Particles {
     });
     const initCompute = init().compute(this.particleCount);
     await this.renderer.computeAsync(initCompute);
-  }
-
-  private createGeometry() {
-    this.sphereGeometry = new THREE.SphereGeometry(0.2, 6, 6);
-  }
-
-  private createMaterial() {
-    this.sphereMaterial = new THREE.MeshBasicNodeMaterial({
-      color: 0xff00ff,
-      side: THREE.DoubleSide,
-    });
-
-    this.sphereMaterial.positionNode = positionLocal.add(
-      this.positionsBuffer.toAttribute()
-    );
-    this.updateMaterialColorNode();
-  }
-
-  // @ts-ignore
-  private getColorByVelocity = Fn(([speed]) => {
-    const t = clamp(
-      speed.div(float(this.sphConfig.maxSpeed)),
-      float(0.0),
-      float(1.0)
-    ).toVar();
-    const deep = vec3(0.0, 0.05, 0.9);
-    const mid = vec3(0.0, 0.6, 0.8);
-    const foam = vec3(1.0, 1.0, 1.0);
-
-    const color = vec3(0.0).toVar();
-
-    If(t.lessThan(float(0.85)), () => {
-      const k = t.div(float(0.85));
-      color.assign(mix(deep, mid, k));
-    }).Else(() => {
-      const k = t.sub(float(0.85)).div(float(0.15));
-      color.assign(mix(mid, foam, k));
-    });
-
-    return color;
-  });
-
-  private updateMaterialColorNode() {
-    this.sphereMaterial.colorNode = Fn(() => {
-      const normal = normalLocal.toVar();
-      const lightDir = vec3(0.3, 1.0, 0.5).normalize().toVar();
-      const ambient = float(0.2).toVar();
-      const diffuse = max(normal.dot(lightDir), float(0.0)).toVar();
-      const speed = this.velocitiesBuffer
-        .element(instanceIndex)
-        .length()
-        .toVar();
-      // @ts-ignore
-      const baseColor = this.getColorByVelocity(speed);
-      const shaded = baseColor
-        .mul(ambient.add(diffuse.mul(float(3.2))))
-        .toVar();
-      return shaded;
-    })();
-  }
-
-  private createMesh() {
-    this.sphereMesh = new THREE.InstancedMesh(
-      this.sphereGeometry,
-      this.sphereMaterial,
-      this.particleCount
-    );
-  }
-
-  public addToScene(scene: THREE.Scene) {
-    this.scene = scene;
-    scene.add(this.sphereMesh);
   }
 
   private disposeParticleBuffers() {
@@ -217,24 +128,39 @@ export class Particles {
     this.viscosityForcesBuffer.dispose();
   }
 
-  private disposeParticleMesh() {
-    if (this.scene) {
-      this.scene.remove(this.sphereMesh);
-    }
-    this.sphereMesh.dispose();
-    this.sphereGeometry.dispose();
-    this.sphereMaterial.dispose();
-  }
-
   public async updateParticleCount(value: number) {
     this.disposeParticleBuffers();
-    this.disposeParticleMesh();
     this.particleCount = value;
     await this.initialize();
+  }
 
-    if (this.scene) {
-      this.scene.add(this.sphereMesh);
-    }
+  public getVelocitiesBuffer(): StorageBufferType {
+    return this.velocitiesBuffer;
+  }
+
+  public getDensitiesBuffer(): StorageBufferType {
+    return this.densitiesBuffer;
+  }
+
+  public getCellStartIndicesBuffer(): StorageBufferType {
+    return this.cellStartIndicesBuffer;
+  }
+
+  public getCellCountsBuffer(): StorageBufferType {
+    return this.cellCountsBuffer;
+  }
+
+  /** Grid constants required to walk the spatial hash from other passes. */
+  public getGridParams() {
+    return {
+      cellSize: this.cellSize,
+      cellCountX: this.cellCountX,
+      cellCountY: this.cellCountY,
+      cellCountZ: this.cellCountZ,
+      xMinCoord: this.xMinCoord,
+      yMinCoord: this.yMinCoord,
+      zMinCoord: this.zMinCoord,
+    };
   }
 
   public getPositionsBuffer(): THREE.TSL.ShaderNodeObject<THREE.StorageBufferNode> {
@@ -383,34 +309,55 @@ export class Particles {
     await this.renderer.computeAsync(viscosityCompute);
   }
 
-  private async computeIntegrate() {
+  private async computeIntegrate(delta: number) {
     const integrateCompute = computeIntegratePass(
       this.positionsBuffer,
       this.velocitiesBuffer,
       this.pressureForcesBuffer,
       this.viscosityForcesBuffer,
       this.sphConfig.mass,
-      this.sphConfig.delta,
+      delta,
       this.sphConfig.restitution,
       this.boxWidth,
       this.boxHeight,
       this.boxDepth,
+      this.xMin,
       this.particleCount
     )().compute(this.particleCount);
     await this.renderer.computeAsync(integrateCompute);
   }
 
-  public async compute() {
-    await this.computeResetCalculation();
-    await this.computeCellIndices();
-    await this.computeCellStartIndices();
-    await this.computeReorderParticle();
-    await this.computeSwitchBuffers();
-    await this.computeDensity();
-    await this.computePressure();
+  /** A local upward impulse for inspecting splashes without restarting the fluid. */
+  public async splash() {
+    const impulse = Fn(() => {
+      const position = this.positionsBuffer.element(instanceIndex);
+      const velocity = this.velocitiesBuffer.element(instanceIndex);
+      // Slightly left of the box centre, wherever the piston has put it.
+      const impulseX = this.boxWidth.mul(0.32).add(this.xMin);
+      const distance2 = position.x.sub(impulseX).pow(2).add(position.z.pow(2));
+      const strength = exp(distance2.div(-9));
+      velocity.addAssign(vec3(3, 16, 0).mul(strength));
+    })().compute(this.particleCount);
+    await this.renderer.computeAsync(impulse);
+    impulse.dispose();
+  }
 
-    await this.computePressureForce();
-    await this.computeViscosity();
-    await this.computeIntegrate();
+  public async compute() {
+    // Sub-stepping keeps the stiff pressure solve stable: one full-dt step
+    // leaves permanent particle jitter that never lets the pool calm down.
+    const substeps = 2;
+    for (let step = 0; step < substeps; step++) {
+      await this.computeResetCalculation();
+      await this.computeCellIndices();
+      await this.computeCellStartIndices();
+      await this.computeReorderParticle();
+      await this.computeSwitchBuffers();
+      await this.computeDensity();
+      await this.computePressure();
+
+      await this.computePressureForce();
+      await this.computeViscosity();
+      await this.computeIntegrate(this.sphConfig.delta / substeps);
+    }
   }
 }

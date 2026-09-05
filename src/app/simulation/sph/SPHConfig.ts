@@ -1,9 +1,11 @@
 export class SPHConfig {
-  particleCount = 10000;
+  particleCount = 30000;
   delta = 1 / 60;
   restitution = 0.3;
-  mass = 0.2;
-  h = 1;
+  // Tuned together: 30k particles at this mass fill the box to the same level
+  // as the old 10k at mass 0.2, i.e. triple the resolution, not more water.
+  mass = 0.0667;
+  h = 0.8;
   restDensity = 1;
   pressureStiffness = 100;
   viscosityMu = 0.22;

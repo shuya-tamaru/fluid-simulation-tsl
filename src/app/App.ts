@@ -1,3 +1,6 @@
+import type { WhitewaterSettings } from "./rendering/WhitewaterRenderer";
+import { defaultWaterSettings } from "./rendering/WaterRenderer";
+import { FluidRenderer, type RenderMode } from "./rendering/FluidRenderer";
 import { SceneManager } from "./core/Scene";
 import { CameraManager } from "./core/Camera";
 import { RendererManager } from "./core/Renderer";
@@ -18,6 +21,19 @@ export class App {
   private particles!: Particles;
   private paramsControls!: ParamsControls;
   private stats!: Stats;
+  private fluidRenderer!: FluidRenderer;
+  private renderMode: RenderMode = "water";
+  private pendingParticleCount?: number;
+  private pendingSplash = false;
+  private whitewaterSettings: WhitewaterSettings = { enabled: true, amount: 1 };
+  private waterSettings = defaultWaterSettings();
+  private disposed = false;
+  private debugSelect!: HTMLSelectElement;
+  private debugMode = 0;
+  private modeButton!: HTMLButtonElement;
+  private controlBar!: HTMLDivElement;
+  private appTitle!: HTMLDivElement;
+
 
   private width: number;
   private height: number;
@@ -38,10 +54,13 @@ export class App {
   }
 
   private async initializeApp(): Promise<void> {
+    (window as unknown as { __fluidApp: App }).__fluidApp = this; // debug handle
+
     await this.initializeManagers();
 
     this.addObjectsToScene();
     this.initializeStats();
+    this.initializeModeSwitch();
     this.setupEventListeners();
     this.startAnimation();
   }
@@ -65,15 +84,90 @@ export class App {
     await this.particles.initialize();
     this.paramsControls = new ParamsControls(
       this.boxBoundary,
-      this.particles,
       this.boundaryConfig,
-      this.sphConfig
+      this.sphConfig,
+      (count) => { this.pendingParticleCount = count; },
+      this.whitewaterSettings,
+      this.waterSettings
     );
   }
 
   private addObjectsToScene(): void {
     this.boxBoundary.addToScene(this.sceneManager.scene);
-    this.particles.addToScene(this.sceneManager.scene);
+    this.fluidRenderer = new FluidRenderer(
+      this.sceneManager.scene, this.particles, this.sphConfig, this.boundaryConfig,
+      this.whitewaterSettings, this.waterSettings
+    );
+  }
+
+  private initializeModeSwitch() {
+    this.controlBar = document.createElement("div");
+    this.controlBar.className = "control-bar";
+
+    const splashButton = document.createElement("button");
+    splashButton.className = "splash-button";
+    splashButton.type = "button";
+    splashButton.textContent = "💦 Splash";
+    splashButton.setAttribute("aria-label", "Trigger a splash");
+    splashButton.onclick = () => { this.pendingSplash = true; };
+    this.controlBar.appendChild(splashButton);
+
+    // Both mode names stay visible; a sliding knob shows which one is live.
+    this.modeButton = document.createElement("button");
+    this.modeButton.className = "render-mode-switch";
+    this.modeButton.type = "button";
+    this.modeButton.setAttribute("role", "switch");
+    this.modeButton.setAttribute("aria-label", "Particles view");
+    this.modeButton.title = "Switch between the shaded water and the raw particles";
+    const waterLabel = document.createElement("span");
+    waterLabel.className = "mode-label";
+    waterLabel.textContent = "Water";
+    const track = document.createElement("span");
+    track.className = "mode-track";
+    track.appendChild(document.createElement("span")).className = "mode-knob";
+    const particlesLabel = document.createElement("span");
+    particlesLabel.className = "mode-label";
+    particlesLabel.textContent = "Particles";
+    this.modeButton.append(waterLabel, track, particlesLabel);
+    const syncModeSwitch = () => {
+      const isWater = this.renderMode === "water";
+      this.modeButton.setAttribute("aria-checked", String(!isWater));
+      this.modeButton.classList.toggle("particles", !isWater);
+      waterLabel.classList.toggle("active", isWater);
+      particlesLabel.classList.toggle("active", !isWater);
+      this.debugSelect.hidden = !isWater;
+    };
+    this.modeButton.onclick = () => {
+      this.renderMode = this.renderMode === "particles" ? "water" : "particles";
+      this.sceneManager.setWaterEnvironment(this.renderMode === "water");
+      this.fluidRenderer.setMode(this.renderMode);
+      this.fluidRenderer.setDebug(this.debugMode);
+      syncModeSwitch();
+    };
+    this.controlBar.appendChild(this.modeButton);
+
+    this.debugSelect = document.createElement("select");
+    this.debugSelect.className = "water-debug";
+    this.debugSelect.setAttribute("aria-label", "Water display");
+    ["Surface", "Normals", "Depth", "Thickness"].forEach((label, index) => {
+      this.debugSelect.add(new Option(label, String(index)));
+    });
+    this.debugSelect.onchange = () => {
+      this.debugMode = Number(this.debugSelect.value);
+      this.fluidRenderer.setDebug(this.debugMode);
+    };
+    this.controlBar.appendChild(this.debugSelect);
+    syncModeSwitch();
+    document.body.appendChild(this.controlBar);
+
+    this.appTitle = document.createElement("div");
+    this.appTitle.className = "app-title";
+    const heading = document.createElement("span");
+    heading.textContent = "SPH Fluid Simulation";
+    const subheading = document.createElement("small");
+    subheading.textContent = "Three.js TSL · WebGPU";
+    this.appTitle.append(heading, subheading);
+    document.body.appendChild(this.appTitle);
   }
 
   private initializeStats(): void {
@@ -103,15 +197,35 @@ export class App {
   };
 
   private animate = async (): Promise<void> => {
-    this.animationId = requestAnimationFrame(this.animate);
+    if (this.disposed) return;
+    if (this.pendingParticleCount !== undefined) {
+      const count = this.pendingParticleCount;
+      this.pendingParticleCount = undefined;
+      this.fluidRenderer.dispose();
+      await this.particles.updateParticleCount(count);
+      this.fluidRenderer = new FluidRenderer(
+        this.sceneManager.scene, this.particles, this.sphConfig, this.boundaryConfig,
+        this.whitewaterSettings, this.waterSettings
+      );
+      this.sceneManager.setWaterEnvironment(this.renderMode === "water");
+      this.fluidRenderer.setMode(this.renderMode);
+      this.fluidRenderer.setDebug(this.debugMode);
+      this.debugSelect.hidden = this.renderMode !== "water";
+    }
     if (this.stats) this.stats.begin();
     this.controlsManager.update();
+    if (this.pendingSplash) {
+      this.pendingSplash = false;
+      await this.particles.splash();
+    }
     await this.particles.compute();
-    this.rendererManager.render(
+    await this.fluidRenderer.render(
+      this.rendererManager.renderer,
       this.sceneManager.scene,
       this.cameraManager.camera
     );
     if (this.stats) this.stats.end();
+    if (!this.disposed) this.animationId = requestAnimationFrame(this.animate);
   };
 
   private startAnimation(): void {
@@ -119,6 +233,9 @@ export class App {
   }
 
   public dispose(): void {
+    this.disposed = true;
+    this.controlBar?.remove();
+    this.appTitle?.remove();
     if (this.animationId) {
       cancelAnimationFrame(this.animationId);
     }

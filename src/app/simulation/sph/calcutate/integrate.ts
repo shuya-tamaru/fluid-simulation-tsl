@@ -24,6 +24,7 @@ export function computeIntegratePass(
   boxWidth: UniformTypeOf<number>,
   boxHeight: UniformTypeOf<number>,
   boxDepth: UniformTypeOf<number>,
+  xMin: number,
   particleCount: number
 ): THREE.TSL.ShaderNodeFn<[]> {
   return Fn(() => {
@@ -42,11 +43,21 @@ export function computeIntegratePass(
         .add(gravity);
 
       const newVel = vel.add(acceleration.mul(float(delta))).toVar();
+      // Mild bulk damping so standing waves and pressure jitter settle within
+      // seconds, as in a real small tank; a splash barely notices it.
+      newVel.mulAssign(float(Math.exp(-0.12 * delta)));
       const newPos = pos.add(newVel.mul(float(delta))).toVar();
       const esp = float(1e-2);
 
-      If(abs(newPos.x).greaterThan(boxWidth.div(2)), () => {
-        newPos.x.assign(boxWidth.div(2).sub(esp).mul(sign(newPos.x)));
+      // X walls are asymmetric: the left wall is fixed at xMin, the right
+      // wall (xMin + width) is the piston driven by the width slider.
+      const xMax = boxWidth.add(xMin);
+      If(newPos.x.greaterThan(xMax.sub(esp)), () => {
+        newPos.x.assign(xMax.sub(esp));
+        newVel.x.mulAssign(float(-1.0).mul(float(1.0).sub(restitution)));
+      });
+      If(newPos.x.lessThan(float(xMin).add(esp)), () => {
+        newPos.x.assign(float(xMin).add(esp));
         newVel.x.mulAssign(float(-1.0).mul(float(1.0).sub(restitution)));
       });
 
@@ -56,7 +67,7 @@ export function computeIntegratePass(
       });
 
       If(abs(newPos.z).greaterThan(boxDepth.div(2)), () => {
-        newPos.z.assign(boxDepth.div(2).mul(sign(newPos.z)));
+        newPos.z.assign(boxDepth.div(2).sub(esp).mul(sign(newPos.z)));
         newVel.z.mulAssign(float(-1.0).mul(float(1.0).sub(restitution)));
       });
 

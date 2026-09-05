@@ -10,10 +10,13 @@ export class BoxBoundary {
   private material!: THREE.MeshBasicNodeMaterial;
   private mesh!: THREE.Mesh;
 
+  private xMin: number;
+
   constructor(boundaryConfig: BoundaryConfig) {
     this.widthNode = boundaryConfig.width;
     this.heightNode = boundaryConfig.height;
     this.depthNode = boundaryConfig.depth;
+    this.xMin = boundaryConfig.xMin;
   }
 
   public createGeometry(): THREE.BoxGeometry {
@@ -28,6 +31,7 @@ export class BoxBoundary {
     this.material = new THREE.MeshBasicNodeMaterial({
       color: 0xffffff,
       transparent: true,
+      alphaTest: 0.5,
       side: THREE.DoubleSide,
     });
     this.updateMaterialOpacityNode();
@@ -57,7 +61,13 @@ export class BoxBoundary {
 
   public createMesh(): THREE.Mesh {
     this.mesh = new THREE.Mesh(this.createGeometry(), this.createMaterial());
+    this.updateMeshPosition();
     return this.mesh;
+  }
+
+  // The left wall stays at xMin; only the right wall follows the width.
+  private updateMeshPosition(): void {
+    this.mesh.position.x = this.xMin + this.widthNode.value / 2;
   }
 
   public addToScene(scene: THREE.Scene): void {
@@ -88,6 +98,7 @@ export class BoxBoundary {
     if (this.mesh && this.mesh.geometry) {
       this.mesh.geometry.dispose();
       this.mesh.geometry = this.createGeometry();
+      this.updateMeshPosition();
     }
   }
 }
