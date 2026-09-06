@@ -1,3 +1,4 @@
+import { FixedStepClock } from "./core/FixedStepClock";
 import type { WhitewaterSettings } from "./rendering/WhitewaterRenderer";
 import { defaultWaterSettings } from "./rendering/WaterRenderer";
 import { FluidRenderer, type RenderMode } from "./rendering/FluidRenderer";
@@ -25,7 +26,7 @@ export class App {
   private renderMode: RenderMode = "water";
   private pendingParticleCount?: number;
   private pendingSplash = false;
-  private whitewaterSettings: WhitewaterSettings = { enabled: true, amount: 1 };
+  private whitewaterSettings: WhitewaterSettings = { enabled: true, amount: 1, appearance: "Refined" };
   private waterSettings = defaultWaterSettings();
   private disposed = false;
   private debugSelect!: HTMLSelectElement;
@@ -40,6 +41,7 @@ export class App {
   private aspect: number;
 
   private animationId?: number;
+  private clock = new FixedStepClock();
 
   //config
   private sphConfig!: SPHConfig;
@@ -82,6 +84,7 @@ export class App {
       this.boundaryConfig
     );
     await this.particles.initialize();
+    await this.particles.refreshSpatialData();
     this.paramsControls = new ParamsControls(
       this.boxBoundary,
       this.boundaryConfig,
@@ -94,6 +97,7 @@ export class App {
 
   private addObjectsToScene(): void {
     this.boxBoundary.addToScene(this.sceneManager.scene);
+    this.boxBoundary.setWaterMode(this.renderMode === "water");
     this.fluidRenderer = new FluidRenderer(
       this.sceneManager.scene, this.particles, this.sphConfig, this.boundaryConfig,
       this.whitewaterSettings, this.waterSettings
@@ -141,6 +145,7 @@ export class App {
       this.renderMode = this.renderMode === "particles" ? "water" : "particles";
       this.sceneManager.setWaterEnvironment(this.renderMode === "water");
       this.fluidRenderer.setMode(this.renderMode);
+      this.boxBoundary.setWaterMode(this.renderMode === "water");
       this.fluidRenderer.setDebug(this.debugMode);
       syncModeSwitch();
     };
@@ -185,6 +190,7 @@ export class App {
 
   private setupEventListeners(): void {
     window.addEventListener("resize", this.handleResize);
+    document.addEventListener("visibilitychange", this.handleVisibility);
   }
 
   private handleResize = (): void => {
@@ -196,29 +202,39 @@ export class App {
     this.rendererManager.resize(this.width, this.height);
   };
 
-  private animate = async (): Promise<void> => {
+  private handleVisibility = () => { this.clock.reset(); };
+
+  private animate = async (timestamp: number): Promise<void> => {
     if (this.disposed) return;
     if (this.pendingParticleCount !== undefined) {
       const count = this.pendingParticleCount;
       this.pendingParticleCount = undefined;
       this.fluidRenderer.dispose();
       await this.particles.updateParticleCount(count);
+      await this.particles.refreshSpatialData();
+      this.clock.reset();
       this.fluidRenderer = new FluidRenderer(
         this.sceneManager.scene, this.particles, this.sphConfig, this.boundaryConfig,
         this.whitewaterSettings, this.waterSettings
       );
       this.sceneManager.setWaterEnvironment(this.renderMode === "water");
       this.fluidRenderer.setMode(this.renderMode);
+      this.boxBoundary.setWaterMode(this.renderMode === "water");
       this.fluidRenderer.setDebug(this.debugMode);
       this.debugSelect.hidden = this.renderMode !== "water";
     }
     if (this.stats) this.stats.begin();
     this.controlsManager.update();
-    if (this.pendingSplash) {
-      this.pendingSplash = false;
-      await this.particles.splash();
+    const steps = document.hidden ? 0 : this.clock.advance(timestamp);
+    for (let step = 0; step < steps; step++) {
+      if (this.pendingSplash) {
+        this.pendingSplash = false;
+        await this.particles.splash();
+      }
+      await this.particles.compute();
+
     }
-    await this.particles.compute();
+    if (steps > 0) await this.fluidRenderer.update(this.rendererManager.renderer, steps * this.sphConfig.delta);
     await this.fluidRenderer.render(
       this.rendererManager.renderer,
       this.sceneManager.scene,
@@ -229,7 +245,7 @@ export class App {
   };
 
   private startAnimation(): void {
-    this.animate();
+    this.animationId = requestAnimationFrame(this.animate);
   }
 
   public dispose(): void {
@@ -240,6 +256,7 @@ export class App {
       cancelAnimationFrame(this.animationId);
     }
     window.removeEventListener("resize", this.handleResize);
+    document.removeEventListener("visibilitychange", this.handleVisibility);
     if (this.stats && this.stats.dom && this.stats.dom.parentElement) {
       this.stats.dom.parentElement.removeChild(this.stats.dom);
     }

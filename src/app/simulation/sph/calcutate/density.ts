@@ -78,14 +78,16 @@ export function computeDensityPass(
               const end = start.add(count).toVar();
               let j = int(start).toVar();
 
-              Loop(j.lessThan(end).and(j.notEqual(instanceIndex)), () => {
-                const pos_j = positionsBuffer.element(j);
-                const r = pos_j.sub(pos_i).toVar();
-                const r2 = r.dot(r);
-                If(r2.lessThan(h2), () => {
-                  const t = float(h2).sub(r2).toVar();
-                  const w = float(poly6Kernel).mul(pow(t, 3));
-                  rho0.addAssign(w.mul(mass));
+              Loop(j.lessThan(end), () => {
+                If(j.notEqual(instanceIndex), () => {
+                  const pos_j = positionsBuffer.element(j);
+                  const r = pos_j.sub(pos_i).toVar();
+                  const r2 = r.dot(r);
+                  If(r2.lessThan(h2), () => {
+                    const t = float(h2).sub(r2).toVar();
+                    const w = float(poly6Kernel).mul(pow(t, 3));
+                    rho0.addAssign(w.mul(mass));
+                  });
                 });
                 j.addAssign(int(1));
               });

@@ -29,8 +29,9 @@ export class FluidRenderer {
 
   setDebug(value: number) { this.water.setDebug(value); }
 
+  async update(renderer: THREE.WebGPURenderer, delta: number) { await this.whitewater.update(renderer, delta); }
+
   async render(renderer: THREE.WebGPURenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
-    await this.whitewater.update(renderer);
     if (this.mode === "water") await this.water.render(renderer, scene, camera);
     else await renderer.renderAsync(scene, camera);
   }

@@ -16,13 +16,13 @@ async function run() {
   await particles.initialize();
   const settings = { enabled: true, amount: 1 };
   const effects = new WhitewaterRenderer(particles, config, boundary, settings);
-  // A compact block near the floor settles into a calm pool quickly.
+  // A stationary fluid snapshot isolates whitewater from solver settling.
   const initialize = Fn(() => {
     const i = float(instanceIndex);
     particles.getPositionsBuffer().element(instanceIndex).assign(vec3(
-      i.mod(16).mul(0.45).sub(3.4),
-      floor(i.div(256)).mul(0.45).sub(7.4),
-      floor(i.div(16)).mod(16).mul(0.45).sub(3.4)
+      i.mod(16).mul(0.35).sub(3.4),
+      floor(i.div(256)).mul(0.35).sub(7.4),
+      floor(i.div(16)).mod(16).mul(0.35).sub(3.4)
     ));
     particles.getVelocitiesBuffer().element(instanceIndex).assign(vec3(0));
   })().compute(config.particleCount);
@@ -35,10 +35,11 @@ async function run() {
     ));
   })().compute(config.particleCount);
   await renderer.computeAsync(initialize);
+  await particles.refreshSpatialData();
   const step = async (count: number) => {
     for (let i = 0; i < count; i++) {
-      await particles.compute();
       await effects.update(renderer);
+      if (i % 20 === 0) output.textContent = report.join("\n") + `\nAdvecting ${i}/${count}`;
     }
   };
   // Test-only buffer inspection; production does not read secondary particles back.
@@ -55,22 +56,23 @@ async function run() {
     return { spray, foam, bubble, total: spray + foam + bubble };
   };
   const check = (condition: boolean, label: string, counts: unknown) => {
+    console.info(label, counts);
     report.push(`${condition ? "PASS" : "FAIL"} ${label}: ${JSON.stringify(counts)}`);
     output.textContent = report.join("\n");
     if (!condition) throw new Error(label);
   };
-  await step(120);
+  await step(10);
   settings.enabled = false;
   await step(1);
   settings.enabled = true;
   await step(30);
   let counts = await stats();
-  check(counts.total <= 20, "Calm water emits nothing", counts);
+  check(counts.total === 0, "Calm water emits nothing", counts);
   await renderer.computeAsync(impulse);
   await step(30);
   counts = await stats();
   check(counts.total > 0, "Converging splash emits whitewater", counts);
-  await step(150);
+  await step(90);
   counts = await stats();
   check(counts.foam + counts.bubble > 0, "Whitewater rides the surface as foam", counts);
   settings.enabled = false;

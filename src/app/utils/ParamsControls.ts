@@ -26,11 +26,29 @@ export class ParamsControls {
     this.boundaryConfig = boundaryConfig;
     this.sphConfig = sphConfig;
     this.initialize();
+    this.gui.add(boundaryConfig, "showFrameInWater").name("Show frame in Water")
+      .onChange(() => this.boxBoundary.updateVisibility());
+    this.gui.add(boundaryConfig.topCollision, "value").name("Top collision");
     const waterFolder = this.gui.addFolder("Water");
     waterFolder.addColor(water, "color").name("Color");
     waterFolder.add(water, "density", 0.2, 2.5, 0.05).name("Density");
+    const surfacePreset = { preset: "Detailed" };
+    waterFolder.add(surfacePreset, "preset", ["Detailed", "Reference"]).name("Surface preset")
+      .onChange((value: string) => {
+        Object.assign(water, value === "Reference"
+          ? { smoothing: 0.65, depthSigma: 0.55, smoothingPasses: 3 }
+          : { smoothing: 0.48, depthSigma: 0.32, smoothingPasses: 2 });
+        waterFolder.controllersRecursive().forEach(controller => controller.updateDisplay());
+      });
+    waterFolder.add(water, "smoothing", 0.2, 0.9, 0.01).name("Surface smoothing");
+    waterFolder.add(water, "depthSigma", 0.1, 0.8, 0.01).name("Depth tolerance");
+    const motion = this.gui.addFolder("Motion");
+    motion.add(sphConfig, "viscosityMu", 0.02, 0.5, 0.01).name("Viscosity");
+    motion.add(sphConfig, "damping", 0, 0.3, 0.01).name("Bulk damping");
+    motion.close();
     const effects = this.gui.addFolder("Whitewater");
     effects.add(whitewater, "enabled").name("Spray & foam");
+    effects.add(whitewater, "appearance", ["Refined", "Reference"]).name("Appearance");
     effects.add(whitewater, "amount", 0, 2, 0.1).name("Emission");
   }
 

@@ -9,8 +9,8 @@ import type { WhitewaterRenderer } from "./WhitewaterRenderer";
 
 // The picked colour is what the water looks like at the reference thickness;
 // extinction coefficients are derived from it, so the GUI colour is literal.
-export interface WaterSettings { color: string; density: number; }
-export const defaultWaterSettings = (): WaterSettings => ({ color: "#0273ac", density: 1 });
+export interface WaterSettings { color: string; density: number; smoothing: number; depthSigma: number; smoothingPasses: number; }
+export const defaultWaterSettings = (): WaterSettings => ({ color: "#014a6f", density: 2, smoothing: 0.48, depthSigma: 0.32, smoothingPasses: 2 });
 const REFERENCE_THICKNESS = 6;
 
 /** Screen-space water: surface reconstruction, optical thickness and refraction. */
@@ -33,6 +33,8 @@ export class WaterRenderer {
   });
   // Whitewater billboards: (coverage, sun shading, linear view depth).
   private foamTarget = new THREE.RenderTarget(1, 1, { type: THREE.HalfFloatType });
+  private foamAccumulation = new THREE.RenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
+  private refinedWhitewater = uniform(true);
   private cameraWorld = uniform(new THREE.Matrix4());
   private input = texture(this.depthTarget.texture);
   private inverseSize = uniform(new THREE.Vector2(1, 1));
@@ -40,6 +42,8 @@ export class WaterRenderer {
   private projection = uniform(new THREE.Matrix4());
   private inverseProjection = uniform(new THREE.Matrix4());
   private focalPixels = uniform(1);
+  private smoothing = uniform(0.48);
+  private depthSigma = uniform(0.32);
   private debug = uniform(0);
   private extinction = uniform(new THREE.Vector3(0.36, 0.11, 0.045));
   private inscatterTint = uniform(new THREE.Vector3(0.015, 0.1, 0.2));
@@ -90,12 +94,12 @@ export class WaterRenderer {
         const sum = float(0).toVar();
         const weights = float(0).toVar();
         // A world-space footprint keeps the smoothing consistent while zooming.
-        const radius = clamp(this.focalPixels.mul(0.65).div(center), 2, 16).toVar();
+        const radius = clamp(this.focalPixels.mul(this.smoothing).div(center), 2, 16).toVar();
         for (let i = -8; i <= 8; i++) {
           const offset = this.direction.mul(this.inverseSize).mul(radius.mul(i / 8));
           const depth = this.input.sample(uv().add(offset)).r.toVar();
           If(depth.greaterThan(0), () => {
-            const delta = depth.sub(center).div(0.55);
+            const delta = depth.sub(center).div(this.depthSigma);
             const weight = exp(delta.mul(delta).mul(-0.5)).mul(Math.exp(-0.5 * (i / 4) ** 2));
             sum.addAssign(depth.mul(weight));
             weights.addAssign(weight);
@@ -152,6 +156,14 @@ export class WaterRenderer {
       return ray.xyz.mul(depth.negate().div(ray.z));
     };
     const foam = texture(this.foamTarget.texture);
+    const foamAccumulation = texture(this.foamAccumulation.texture);
+    const sampleFoam = (coord: THREE.TSL.ShaderNodeObject<THREE.Node>) => {
+      const closest = foam.sample(coord);
+      const accumulated = foamAccumulation.sample(coord);
+      const coverage = float(1).sub(exp(accumulated.r.negate()));
+      const refined = vec4(coverage, accumulated.g.div(max(accumulated.r, 0.00001)).mul(coverage), closest.b, 1);
+      return this.refinedWhitewater.select(refined, closest);
+    };
     // Lit whitewater tint: shadowed foam falls toward a cool ambient blue.
     // The stored shade is premultiplied by coverage, so unpack it against r.
     const foamTint = (data: THREE.TSL.ShaderNodeObject<THREE.Node>) =>
@@ -159,7 +171,7 @@ export class WaterRenderer {
     this.surfaceMaterial.fragmentNode = Fn(() => {
       const coord = uv();
       const depth = sampleSurface(coord).toVar();
-      const foamData = foam.sample(coord).toVar();
+      const foamData = sampleFoam(coord).toVar();
       const hasFoam = foamData.b.greaterThan(0.001).and(foamData.r.greaterThan(0.003));
       const hasWater = depth.greaterThan(0);
       If(hasWater.not().and(hasFoam.not()), () => { Discard(); });
@@ -211,7 +223,7 @@ export class WaterRenderer {
       // Whitewater behind the surface: sample along the refracted ray and
       // attenuate it by how deep under the surface it sits. Deep whitewater
       // melts into the water colour instead of mixing toward black.
-      const foamRefracted = foam.sample(sampleUV);
+      const foamRefracted = sampleFoam(sampleUV);
       const foamDistance = clamp(foamRefracted.b.sub(depth), 0, 12);
       const behindAmount = foamRefracted.r
         .mul(foamRefracted.b.greaterThan(depth).select(1, 0))
@@ -250,7 +262,8 @@ export class WaterRenderer {
     // Composite against the existing scene depth, including the box's visible edges.
     this.surfaceMaterial.depthNode = Fn(() => {
       const depth = sampleSurface(uv());
-      const foamDepth = foam.sample(uv()).b;
+      const foamSample = sampleFoam(uv());
+      const foamDepth = foamSample.r.greaterThan(0.003).select(foamSample.b, float(0));
       const waterZ = depth.greaterThan(0).select(depth, float(1e5));
       const foamZ = foamDepth.greaterThan(0.001).select(foamDepth, float(1e5));
       const clip = this.projection.mul(vec4(0, 0, min(waterZ, foamZ).negate(), 1));
@@ -274,6 +287,8 @@ export class WaterRenderer {
   setDebug(value: number) { this.debug.value = value; }
 
   async render(renderer: THREE.WebGPURenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
+    this.smoothing.value = this.settings.smoothing;
+    this.depthSigma.value = this.settings.depthSigma;
     renderer.getDrawingBufferSize(this.size);
     // Cap to CSS resolution on Retina screens to bound the multi-pass cost.
     const width = Math.max(1, Math.round(this.size.x / renderer.getPixelRatio()));
@@ -285,6 +300,8 @@ export class WaterRenderer {
     this.thicknessHorizontal.setSize(width, height);
     this.thicknessSmooth.setSize(width, height);
     this.foamTarget.setSize(width, height);
+    this.foamAccumulation.setSize(width, height);
+    this.refinedWhitewater.value = this.whitewater.refined;
     this.backgroundTarget.setSize(this.size.x, this.size.y);
     // Water is also the first frame now: initialize WebGPU projection conventions
     // before copying matrices (the renderer normally does this during render()).
@@ -322,14 +339,13 @@ export class WaterRenderer {
       renderer.setRenderTarget(this.depthTarget);
       await renderer.renderAsync(this.scene, camera);
       // Whitewater renders offscreen; dead particles collapse to zero radius.
-      renderer.setRenderTarget(this.foamTarget);
-      await renderer.renderAsync(this.whitewater.scene, camera);
+      await this.whitewater.renderDiffuse(renderer, camera, this.foamTarget, this.foamAccumulation);
       this.mesh.material = this.thicknessMaterial;
       renderer.setRenderTarget(this.thicknessTarget);
       await renderer.renderAsync(this.scene, camera);
       this.mesh.material = this.depthMaterial;
       this.quad.material = this.blurMaterial;
-      for (let iteration = 0; iteration < 3; iteration++) {
+      for (let iteration = 0; iteration < this.settings.smoothingPasses; iteration++) {
         this.input.value = iteration === 0 ? this.depthTarget.texture : this.smoothTarget.texture;
         this.direction.value.set(1, 0);
         renderer.setRenderTarget(this.horizontalTarget);
@@ -356,6 +372,7 @@ export class WaterRenderer {
       renderer.autoClear = false;
       this.quad.material = this.surfaceMaterial;
       await this.quad.renderAsync(renderer);
+      if (this.debug.value === 0) await this.whitewater.renderDroplets(renderer, camera);
     } finally {
       this.mesh.material = this.depthMaterial;
       renderer.setRenderTarget(previousTarget);
@@ -380,6 +397,7 @@ export class WaterRenderer {
     this.thicknessMaterial.dispose();
     this.thicknessBlurMaterial.dispose();
     this.foamTarget.dispose();
+    this.foamAccumulation.dispose();
     this.backgroundTarget.dispose();
   }
 }

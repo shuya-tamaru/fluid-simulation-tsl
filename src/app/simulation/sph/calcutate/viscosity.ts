@@ -116,7 +116,9 @@ export function computeViscosityPass(
         dz.addAssign(int(1));
       });
 
-      viscosity_i.assign(viscosityForce_i);
+      // The sum above is acceleration (nu * sum(m_j/rho * dv * lapW)).
+      // Integrate divides forces by m_i, so store m_i * acceleration here.
+      viscosity_i.assign(viscosityForce_i.mul(mass));
     });
   });
 }

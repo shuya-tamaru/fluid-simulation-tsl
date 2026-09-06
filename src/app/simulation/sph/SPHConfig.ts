@@ -1,6 +1,8 @@
 export class SPHConfig {
   particleCount = 30000;
   delta = 1 / 60;
+  substeps = 2;
+  damping = 0.04;
   restitution = 0.3;
   // Tuned together: 30k particles at this mass fill the box to the same level
   // as the old 10k at mass 0.2, i.e. triple the resolution, not more water.

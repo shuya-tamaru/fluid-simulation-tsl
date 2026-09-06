@@ -4,6 +4,8 @@ export class BoundaryConfig {
   width = uniform(16);
   height = uniform(16);
   depth = uniform(10);
+  topCollision = uniform(true);
+  showFrameInWater = false;
   // The left wall never moves; the width slider pushes the right wall only,
   // acting like a wave-making piston. Box X range is [xMin, xMin + width].
   readonly xMin = -8;

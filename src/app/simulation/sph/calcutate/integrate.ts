@@ -21,9 +21,11 @@ export function computeIntegratePass(
   mass: number,
   delta: number,
   restitution: number,
+  damping: number,
   boxWidth: UniformTypeOf<number>,
   boxHeight: UniformTypeOf<number>,
   boxDepth: UniformTypeOf<number>,
+  topCollision: UniformTypeOf<boolean>,
   xMin: number,
   particleCount: number
 ): THREE.TSL.ShaderNodeFn<[]> {
@@ -45,7 +47,7 @@ export function computeIntegratePass(
       const newVel = vel.add(acceleration.mul(float(delta))).toVar();
       // Mild bulk damping so standing waves and pressure jitter settle within
       // seconds, as in a real small tank; a splash barely notices it.
-      newVel.mulAssign(float(Math.exp(-0.12 * delta)));
+      newVel.mulAssign(float(Math.exp(-damping * delta)));
       const newPos = pos.add(newVel.mul(float(delta))).toVar();
       const esp = float(1e-2);
 
@@ -61,8 +63,12 @@ export function computeIntegratePass(
         newVel.x.mulAssign(float(-1.0).mul(float(1.0).sub(restitution)));
       });
 
-      If(abs(newPos.y).greaterThan(boxHeight.div(2)), () => {
-        newPos.y.assign(boxHeight.div(2).sub(esp).mul(sign(newPos.y)));
+      If(newPos.y.lessThan(boxHeight.div(-2)), () => {
+        newPos.y.assign(boxHeight.div(-2).add(esp));
+        newVel.y.mulAssign(float(-1.0).mul(float(1.0).sub(restitution)));
+      });
+      If(topCollision.and(newPos.y.greaterThan(boxHeight.div(2))), () => {
+        newPos.y.assign(boxHeight.div(2).sub(esp));
         newVel.y.mulAssign(float(-1.0).mul(float(1.0).sub(restitution)));
       });
 

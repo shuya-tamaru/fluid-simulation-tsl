@@ -1,8 +1,9 @@
+import { waterEnvironment } from "./WaterEnvironment";
 import * as THREE from "three/webgpu";
 import {
-  Fn, If, Loop, atomicAdd, clamp, cross, dot, float, hash,
+  Fn, If, Loop, atomicAdd, atomicStore, clamp, cross, dot, float, hash,
   instanceIndex, instancedArray, int, max, min, mix, normalLocal, pow,
-  positionLocal, positionView, sign, sqrt, uint, uniform, vec3, vec4, cos, sin, abs,
+  positionLocal, positionView, cameraWorldMatrix, normalView, screenUV, viewportSharedTexture, reflect, uv, Discard, exp, vec2, sign, sqrt, uint, uniform, vec3, vec4, cos, sin, abs,
 } from "three/tsl";
 import type { Particles } from "../simulation/sph/Particles";
 import type { StorageBufferType } from "../types/BufferType";
@@ -14,7 +15,7 @@ import {
 } from "../simulation/sph/utils/positionToCellIndex";
 
 type Node = THREE.TSL.ShaderNodeObject<THREE.Node>;
-export interface WhitewaterSettings { enabled: boolean; amount: number; }
+export interface WhitewaterSettings { enabled: boolean; amount: number; appearance?: "Refined" | "Reference"; }
 
 // Ihmsen-style whitewater (after Sebastian Lague's Fluid-Sim): fluid particles
 // with converging neighbours and high kinetic energy trap air and emit white
@@ -40,6 +41,8 @@ export class WhitewaterRenderer {
   private states = instancedArray(this.capacity, "vec4");
   private spawnCursor = instancedArray(1, "uint").toAtomic();
   private tick = uniform(0, "uint");
+  private ringOffset = uniform(0, "uint");
+  private resetCursor: THREE.ComputeNode;
   private amount = uniform(1);
   private dt = uniform(1 / 60);
   private spawnParticles: THREE.ComputeNode;
@@ -49,6 +52,14 @@ export class WhitewaterRenderer {
   private material = new THREE.MeshBasicNodeMaterial();
   private mesh: THREE.InstancedMesh;
   public readonly scene = new THREE.Scene();
+  private spriteScene = new THREE.Scene();
+  private sprayScene = new THREE.Scene();
+  private spriteGeometry = new THREE.PlaneGeometry(2, 2);
+  private spriteDepthMaterial = new THREE.NodeMaterial();
+  private spriteAccumulationMaterial = new THREE.NodeMaterial();
+  private dropMaterial = new THREE.MeshBasicNodeMaterial();
+  private spriteMesh!: THREE.InstancedMesh;
+  private dropMesh!: THREE.InstancedMesh;
   private wasEnabled = true;
   private settings: WhitewaterSettings;
   private config: SPHConfig;
@@ -110,6 +121,7 @@ export class WhitewaterRenderer {
 
     const boxLimit = (axis: "width" | "height" | "depth") => boundary[axis].mul(0.5).sub(0.02);
 
+    this.resetCursor = Fn(() => { atomicStore(this.spawnCursor.element(0), uint(0)); })().compute(1, [1]);
     this.clearParticles = Fn(() => {
       this.states.element(instanceIndex).assign(vec4(0));
     })().compute(this.capacity);
@@ -121,8 +133,10 @@ export class WhitewaterRenderer {
     const sourceDensities = particles.getDensitiesBuffer();
     this.surfaceNormals = instancedArray(particles.particleCount, "vec4");
     this.computeNormals = Fn(() => {
+      If(instanceIndex.lessThan(particles.particleCount), () => {
       const pos = sourcePositions.element(instanceIndex).toVar();
       const outward = vec3(0).toVar();
+      If(sourceDensities.element(instanceIndex).lessThan(0.9), () => {
       forEachNeighbour(pos, (j) => {
         If(j.notEqual(int(instanceIndex)), () => {
           const offset = pos.sub(sourcePositions.element(j)).toVar();
@@ -134,6 +148,7 @@ export class WhitewaterRenderer {
           });
         });
       });
+      });
       // xyz: surface normal (zero when interior), w: fluid density. Packing
       // the density here keeps the spawn pass within WebGPU's 8-buffer limit.
       const density = sourceDensities.element(instanceIndex);
@@ -142,6 +157,7 @@ export class WhitewaterRenderer {
       this.surfaceNormals.element(instanceIndex).assign(
         vec4(nearSurface.select(outward.normalize(), vec3(0)), density)
       );
+      });
     })().compute(particles.particleCount);
 
     // ---- Emission from fluid particles ----
@@ -149,9 +165,11 @@ export class WhitewaterRenderer {
     // trapped air fires where flows converge, wave crests fire on convex,
     // fast-moving surface regions - the lip of a breaking splash.
     this.spawnParticles = Fn(() => {
+      If(instanceIndex.lessThan(particles.particleCount), () => {
       const pos = sourcePositions.element(instanceIndex).toVar();
       const vel = sourceVelocities.element(instanceIndex).toVar();
       const normal = this.surfaceNormals.element(instanceIndex).toVar();
+      If(vel.dot(vel).greaterThan(9), () => {
       const weightedVelocityDifference = float(0).toVar();
       const curvature = float(0).toVar();
       forEachNeighbour(pos, (j) => {
@@ -183,7 +201,8 @@ export class WhitewaterRenderer {
       const trappedAir = clamp(weightedVelocityDifference.sub(3).div(14), 0, 1);
       const kinetic = clamp(vel.dot(vel).sub(9).div(40), 0, 1);
       // Crests only fire while the surface moves outward along its normal.
-      const movingOutward = vel.normalize().dot(normal.xyz).greaterThanEqual(0.6)
+      const safeVelocityDirection = vel.div(max(vel.length(), 1e-6));
+      const movingOutward = safeVelocityDirection.dot(normal.xyz).greaterThanEqual(0.6)
         .and(normal.xyz.dot(normal.xyz).greaterThan(0.5)).select(1, 0);
       const waveCrest = clamp(curvature.sub(2).div(6), 0, 1).mul(movingOutward);
       // Wall-impact potential: a wave front slams a side wall as one body,
@@ -212,7 +231,8 @@ export class WhitewaterRenderer {
       const airEmission = kinetic.mul(airborne).mul(this.airborneRate);
       const flowEmission = kinetic
         .mul(trappedAir.mul(this.trappedAirRate).add(waveCrest.mul(this.waveCrestRate)));
-      const wallEmission = wallImpact.mul(this.wallImpactRate);
+      const wallEmission = wallImpact.mul(this.wallImpactRate)
+        .mul(normal.w.lessThan(config.restDensity * 0.9).select(1, 0));
       const spawnFactor = flowEmission.add(wallEmission).add(airEmission)
         .mul(this.amount).mul(this.dt);
       // Wall spray leaves deflected off the wall and upward, like run-up.
@@ -228,18 +248,16 @@ export class WhitewaterRenderer {
         const axisA = cross(vel, vec3(0, 1, 0)).toVar();
         If(axisA.dot(axisA).lessThan(1e-6), () => { axisA.assign(vec3(1, 0, 0)); });
         axisA.assign(axisA.normalize());
-        const axisB = cross(axisA, vel.normalize());
+        const axisB = cross(axisA, safeVelocityDirection);
         const s = int(0).toVar();
         Loop(s.lessThan(spawnCount), () => {
           const slotSeed = seed.add(uint(s).mul(uint(7919)));
-          const slot = atomicAdd(this.spawnCursor.element(0), uint(1)).mod(uint(this.capacity));
-          // Recycle only dead slots and short-lived surface foam. Airborne
-          // spray and bubbles are never overwritten: a heavy burst used to
-          // wrap the ring and erase its own spray in mid-flight.
-          const occupant = this.states.element(slot).z;
-          const recyclable = occupant.lessThan(0.5)
-            .or(occupant.greaterThan(1.5).and(occupant.lessThan(2.5)));
-          If(recyclable, () => {
+          const ticket = atomicAdd(this.spawnCursor.element(0), uint(1));
+          const slot = ticket.add(this.ringOffset).mod(uint(this.capacity));
+          // Each ticket is unique within this dispatch. Excess requests are
+          // dropped before reading a slot; live particles are never overwritten.
+          If(ticket.lessThan(this.capacity), () => {
+          If(this.states.element(slot).z.lessThan(0.5), () => {
             const angle = hash(slotSeed.add(1)).mul(Math.PI * 2);
             const radial = axisA.mul(cos(angle)).add(axisB.mul(sin(angle)));
             const baseOffset = radial.mul(sqrt(hash(slotSeed.add(2))).mul(h * 0.5));
@@ -252,8 +270,11 @@ export class WhitewaterRenderer {
             const lifetime = hash(slotSeed.add(4)).mul(2).add(1.5).add(energy.mul(4));
             this.states.element(slot).assign(vec4(lifetime, lifetime, 1, 1));
           });
+          });
           s.addAssign(int(1));
         });
+      });
+      });
       });
     })().compute(particles.particleCount);
 
@@ -315,8 +336,12 @@ export class WhitewaterRenderer {
           position.x.assign(xLow);
           velocity.x.mulAssign(-0.2);
         });
-        If(abs(position.y).greaterThan(limitY), () => {
-          position.y.assign(limitY.mul(sign(position.y)));
+        If(position.y.lessThan(limitY.negate()), () => {
+          position.y.assign(limitY.negate());
+          velocity.y.mulAssign(-0.2);
+        });
+        If(boundary.topCollision.and(position.y.greaterThan(limitY)), () => {
+          position.y.assign(limitY);
           velocity.y.mulAssign(-0.2);
         });
         If(abs(position.z).greaterThan(limitZ), () => {
@@ -354,20 +379,104 @@ export class WhitewaterRenderer {
     this.mesh = new THREE.InstancedMesh(this.geometry, this.material, this.capacity);
     this.mesh.frustumCulled = false;
     this.scene.add(this.mesh);
+
+    // Fine spray / foam accumulate optical depth instead of stamping white balls.
+    const isSpray = state.z.lessThan(1.5).and(alive);
+    const largeDrop = isSpray.and(hash(instanceIndex.add(997)).greaterThan(0.65));
+    const spriteRadius = isFoam.select(0.105, state.z.greaterThan(2.5).select(0.055, 0.065));
+    const spriteScale = spriteRadius.mul(sizeVariation).mul(dissolve)
+      .mul(alive.and(largeDrop.not()).select(1, 0));
+    this.spriteDepthMaterial.positionNode = this.positions.toAttribute().add(
+      cameraWorldMatrix.mul(vec4(positionLocal.xy.mul(spriteScale), 0, 0)).xyz
+    );
+    const opticalData = Fn(() => {
+      const r2 = uv().mul(2).sub(1).dot(uv().mul(2).sub(1));
+      If(r2.greaterThanEqual(1), () => { Discard(); });
+      const profile = exp(r2.mul(-3.5)).mul(float(1).sub(r2));
+      const extinction = isFoam.select(0.6, state.z.greaterThan(2.5).select(0.18, 0.09));
+      const tau = profile.mul(extinction).mul(clamp(state.x.div(1.2), 0, 1));
+      const shade = float(0.6).add(sqrt(max(float(1).sub(r2), 0)).mul(0.35));
+      return vec4(tau, tau.mul(shade), positionView.z.negate(), 1);
+    });
+    this.spriteDepthMaterial.fragmentNode = opticalData();
+    this.spriteDepthMaterial.toneMapped = false;
+    this.spriteAccumulationMaterial.positionNode = this.spriteDepthMaterial.positionNode;
+    this.spriteAccumulationMaterial.fragmentNode = Fn(() => {
+      const data = opticalData();
+      return vec4(data.r, data.g, 0, 0);
+    })();
+    this.spriteAccumulationMaterial.blending = THREE.CustomBlending;
+    this.spriteAccumulationMaterial.blendSrc = THREE.OneFactor;
+    this.spriteAccumulationMaterial.blendDst = THREE.OneFactor;
+    this.spriteAccumulationMaterial.blendEquation = THREE.AddEquation;
+    this.spriteAccumulationMaterial.transparent = true;
+    this.spriteAccumulationMaterial.depthTest = false;
+    this.spriteAccumulationMaterial.depthWrite = false;
+    this.spriteAccumulationMaterial.toneMapped = false;
+    this.spriteMesh = new THREE.InstancedMesh(this.spriteGeometry, this.spriteDepthMaterial, this.capacity);
+    this.spriteMesh.frustumCulled = false;
+    this.spriteScene.add(this.spriteMesh);
+
+    // Resolved spray droplets refract the already-composited scene and reflect
+    // the same studio environment as the water. They are not white diffuse foam.
+    const dropRadius = float(0.043).mul(sizeVariation).mul(dissolve).mul(largeDrop.select(1, 0));
+    this.dropMaterial.positionNode = positionLocal.mul(dropRadius).add(this.positions.toAttribute());
+    this.dropMaterial.fragmentNode = Fn(() => {
+      const n = normalView.normalize();
+      const incident = positionView.normalize();
+      const reflected = cameraWorldMatrix.mul(vec4(reflect(incident, n), 0)).xyz.normalize();
+      const fresnel = float(0.02037).add(pow(float(1).sub(max(n.dot(incident.negate()), 0)), 5).mul(0.97963));
+      const distortedUV = clamp(screenUV.add(n.xy.mul(vec2(0.002, -0.002))), vec2(0.001), vec2(0.999));
+      const transmitted = viewportSharedTexture(distortedUV).rgb.mul(vec3(0.97, 0.99, 1));
+      return vec4(mix(transmitted, waterEnvironment(reflected), fresnel), 1);
+    })();
+    this.dropMaterial.depthWrite = false;
+    this.dropMesh = new THREE.InstancedMesh(this.geometry, this.dropMaterial, this.capacity);
+    this.dropMesh.frustumCulled = false;
+    this.sprayScene.add(this.dropMesh);
+  }
+
+  get refined() { return this.settings.appearance !== "Reference"; }
+
+  async renderDiffuse(renderer: THREE.WebGPURenderer, camera: THREE.Camera,
+    nearest: THREE.RenderTarget, accumulation: THREE.RenderTarget) {
+    const oldTarget = renderer.getRenderTarget();
+    try {
+      renderer.setRenderTarget(nearest);
+      if (this.refined) {
+        this.spriteMesh.material = this.spriteDepthMaterial;
+        await renderer.renderAsync(this.spriteScene, camera);
+        renderer.setRenderTarget(accumulation);
+        this.spriteMesh.material = this.spriteAccumulationMaterial;
+        await renderer.renderAsync(this.spriteScene, camera);
+      } else {
+        await renderer.renderAsync(this.scene, camera);
+      }
+    } finally {
+      this.spriteMesh.material = this.spriteDepthMaterial;
+      renderer.setRenderTarget(oldTarget);
+    }
+  }
+
+  async renderDroplets(renderer: THREE.WebGPURenderer, camera: THREE.Camera) {
+    if (!this.refined || !this.settings.enabled) return;
+    await renderer.renderAsync(this.sprayScene, camera);
   }
 
   get enabled() { return this.settings.enabled; }
 
-  async update(renderer: THREE.WebGPURenderer) {
+  async update(renderer: THREE.WebGPURenderer, delta = this.config.delta) {
     if (!this.settings.enabled) {
       if (this.wasEnabled) await renderer.computeAsync(this.clearParticles);
       this.wasEnabled = false;
       return;
     }
     this.wasEnabled = true;
-    this.dt.value = this.config.delta;
+    this.dt.value = delta;
     this.amount.value = this.settings.amount;
     this.tick.value++;
+    this.ringOffset.value = (this.tick.value * 8191) % this.capacity;
+    await renderer.computeAsync(this.resetCursor);
     await renderer.computeAsync(this.updateParticles);
     await renderer.computeAsync(this.computeNormals);
     await renderer.computeAsync(this.spawnParticles);
@@ -376,6 +485,14 @@ export class WhitewaterRenderer {
   dispose() {
     this.mesh.removeFromParent();
     this.mesh.dispose();
+    this.spriteMesh.removeFromParent();
+    this.dropMesh.removeFromParent();
+    this.spriteMesh.dispose();
+    this.dropMesh.dispose();
+    this.spriteGeometry.dispose();
+    this.spriteDepthMaterial.dispose();
+    this.spriteAccumulationMaterial.dispose();
+    this.dropMaterial.dispose();
     this.geometry.dispose();
     this.material.dispose();
     this.positions.dispose();
@@ -383,6 +500,7 @@ export class WhitewaterRenderer {
     this.states.dispose();
     this.surfaceNormals.dispose();
     this.spawnCursor.dispose();
+    this.resetCursor.dispose();
     this.computeNormals.dispose();
     this.spawnParticles.dispose();
     this.updateParticles.dispose();

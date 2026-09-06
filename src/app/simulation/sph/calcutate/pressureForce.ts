@@ -78,29 +78,31 @@ export function computePressureForcePass(
               const end = start.add(count).toVar();
               let j = int(start).toVar();
 
-              Loop(j.lessThan(end).and(j.notEqual(i)), () => {
-                const pos_j = positionsBuffer.element(j);
-                const dir = pos_i.sub(pos_j).toVar();
-                const r = dir.length().toVar();
-                const r2 = dot(dir, dir);
-                If(r2.lessThan(h2), () => {
-                  const invR = inverseSqrt(max(r2, float(1e-8).mul(h2)));
-                  const t = float(h).sub(r).toVar();
-                  If(t.greaterThan(float(0.0)), () => {
-                    const _dir = dir.mul(invR).toVar();
-                    const gradW = float(spiky).mul(t.mul(t)).mul(_dir);
-                    const density_j = densitiesBuffer.element(j);
-                    const rho_j = max(density_j, float(1e-8));
-                    const press_j = pressuresBuffer.element(j);
-                    const term = pressure_i
-                      .div(rho_i.mul(rho_i))
-                      .add(press_j.div(rho_j.mul(rho_j)))
-                      .toVar();
-                    const fi = float(-1.0).mul(
-                      float(mass).mul(float(mass)).mul(term).mul(gradW)
-                    );
+              Loop(j.lessThan(end), () => {
+                If(j.notEqual(i), () => {
+                  const pos_j = positionsBuffer.element(j);
+                  const dir = pos_i.sub(pos_j).toVar();
+                  const r = dir.length().toVar();
+                  const r2 = dot(dir, dir);
+                  If(r2.lessThan(h2), () => {
+                    const invR = inverseSqrt(max(r2, float(1e-8).mul(h2)));
+                    const t = float(h).sub(r).toVar();
+                    If(t.greaterThan(float(0.0)), () => {
+                      const _dir = dir.mul(invR).toVar();
+                      const gradW = float(spiky).mul(t.mul(t)).mul(_dir);
+                      const density_j = densitiesBuffer.element(j);
+                      const rho_j = max(density_j, float(1e-8));
+                      const press_j = pressuresBuffer.element(j);
+                      const term = pressure_i
+                        .div(rho_i.mul(rho_i))
+                        .add(press_j.div(rho_j.mul(rho_j)))
+                        .toVar();
+                      const fi = float(-1.0).mul(
+                        float(mass).mul(float(mass)).mul(term).mul(gradW)
+                      );
 
-                    pForce_i.addAssign(fi);
+                      pForce_i.addAssign(fi);
+                    });
                   });
                 });
                 j.addAssign(int(1));

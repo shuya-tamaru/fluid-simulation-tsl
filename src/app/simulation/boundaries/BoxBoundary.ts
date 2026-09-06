@@ -11,8 +11,11 @@ export class BoxBoundary {
   private mesh!: THREE.Mesh;
 
   private xMin: number;
+  private waterMode = true;
+  private boundaryConfig: BoundaryConfig;
 
   constructor(boundaryConfig: BoundaryConfig) {
+    this.boundaryConfig = boundaryConfig;
     this.widthNode = boundaryConfig.width;
     this.heightNode = boundaryConfig.height;
     this.depthNode = boundaryConfig.depth;
@@ -62,6 +65,7 @@ export class BoxBoundary {
   public createMesh(): THREE.Mesh {
     this.mesh = new THREE.Mesh(this.createGeometry(), this.createMaterial());
     this.updateMeshPosition();
+    this.updateVisibility();
     return this.mesh;
   }
 
@@ -72,6 +76,15 @@ export class BoxBoundary {
 
   public addToScene(scene: THREE.Scene): void {
     scene.add(this.createMesh());
+  }
+
+  public setWaterMode(enabled: boolean): void {
+    this.waterMode = enabled;
+    this.updateVisibility();
+  }
+
+  public updateVisibility(): void {
+    if (this.mesh) this.mesh.visible = !this.waterMode || this.boundaryConfig.showFrameInWater;
   }
 
   public getSizes(): { width: number; height: number; depth: number } {

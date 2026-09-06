@@ -1,4 +1,4 @@
-import { Fn, exp, hash, instancedArray, instanceIndex, vec3 } from "three/tsl";
+import { Fn, If, exp, hash, instancedArray, instanceIndex, vec3 } from "three/tsl";
 import * as THREE from "three/webgpu";
 import type { StorageBufferType } from "../../types/BufferType";
 import { computeDensityPass } from "./calcutate/density";
@@ -10,7 +10,7 @@ import type { UniformTypeOf } from "../../types/UniformType";
 import { SPHConfig } from "./SPHConfig";
 import type { BoundaryConfig } from "../boundaries/BoundaryConfig";
 import { computeCellIndicesPass } from "./calcutate/cellIndices";
-import { computeCellStartIndicesPass } from "./calcutate/cellStartIndices";
+import { CELL_SCAN_BLOCK_SIZE, computeCellBlockSumsPass, computeBlockedCellStartsPass } from "./calcutate/cellStartIndices";
 import { computeReorderParticlePass } from "./calcutate/reorderParticle";
 import { computeResetCalcPass } from "./calcutate/resetCalculation";
 import { computeSwitchBuffersPass } from "./calcutate/switchBuffers";
@@ -18,10 +18,12 @@ import { computeSwitchBuffersPass } from "./calcutate/switchBuffers";
 export class Particles {
   private boxWidth!: UniformTypeOf<number>;
   private boxHeight!: UniformTypeOf<number>;
+  private topCollision!: UniformTypeOf<boolean>;
   private boxDepth!: UniformTypeOf<number>;
   public particleCount!: number;
   private sphConfig!: SPHConfig;
 
+  private cellBlockSumsBuffer!: StorageBufferType;
   private cellIndicesBuffer!: StorageBufferType;
   private cellCountsBuffer!: StorageBufferType;
   private cellStartIndicesBuffer!: StorageBufferType;
@@ -47,6 +49,22 @@ export class Particles {
   private yMinCoord!: number;
   private zMinCoord!: number;
 
+  private kernels = new Map<string, THREE.ComputeNode>();
+  private kernelConfig = "";
+  private spatialDataValid = false;
+  private pendingPasses: THREE.ComputeNode[] = [];
+
+  private kernel(name: string, create: () => THREE.ComputeNode) {
+    let node = this.kernels.get(name);
+    if (!node) { node = create(); this.kernels.set(name, node); }
+    return node;
+  }
+
+  private clearKernels() {
+    for (const node of this.kernels.values()) node.dispose();
+    this.kernels.clear();
+  }
+
   //params
 
   constructor(
@@ -60,6 +78,7 @@ export class Particles {
     this.boxWidth = boundaryConfig.width;
     this.boxHeight = boundaryConfig.height;
     this.boxDepth = boundaryConfig.depth;
+    this.topCollision = boundaryConfig.topCollision;
 
     this.xMin = boundaryConfig.xMin;
     // Size the grid for the slider maxima, not the current box: box resizes
@@ -80,6 +99,7 @@ export class Particles {
   }
 
   private initializeParticleBuffers() {
+    this.cellBlockSumsBuffer = instancedArray(Math.ceil(this.totalCellCount / CELL_SCAN_BLOCK_SIZE), "int");
     this.cellIndicesBuffer = instancedArray(this.particleCount, "int");
     this.cellCountsBuffer = instancedArray(
       this.totalCellCount,
@@ -99,21 +119,27 @@ export class Particles {
 
   private async initializeParticlePositions() {
     const init = Fn(() => {
-      const pos = this.positionsBuffer.element(instanceIndex);
+      If(instanceIndex.lessThan(this.particleCount), () => {
+        const pos = this.positionsBuffer.element(instanceIndex);
 
-      const x = hash(instanceIndex.mul(3)).mul(this.boxWidth).add(this.xMin);
-      const y = hash(instanceIndex.mul(5).add(1)).sub(0.5).mul(this.boxHeight);
-      const z = hash(instanceIndex.mul(7)).sub(0.5).mul(this.boxDepth);
+        const x = hash(instanceIndex.mul(3)).mul(this.boxWidth).add(this.xMin);
+        const y = hash(instanceIndex.mul(5).add(1)).sub(0.5).mul(this.boxHeight);
+        const z = hash(instanceIndex.mul(7)).sub(0.5).mul(this.boxDepth);
 
-      const initialPosition = vec3(x, y, z);
+        const initialPosition = vec3(x, y, z);
 
-      pos.assign(initialPosition);
+        pos.assign(initialPosition);
+      });
     });
     const initCompute = init().compute(this.particleCount);
     await this.renderer.computeAsync(initCompute);
+    initCompute.dispose();
   }
 
   private disposeParticleBuffers() {
+    this.clearKernels();
+    this.spatialDataValid = false;
+    this.cellBlockSumsBuffer.dispose();
     this.cellIndicesBuffer.dispose();
     this.cellCountsBuffer.dispose();
     this.cellStartIndicesBuffer.dispose();
@@ -167,17 +193,17 @@ export class Particles {
     return this.positionsBuffer;
   }
 
-  private async computeResetCalculation() {
-    const resetCalculationCompute = computeResetCalcPass(
+  private computeResetCalculation() {
+    const resetCalculationCompute = this.kernel("resetCalculationCompute", () => computeResetCalcPass(
       this.offsetsBuffer,
       this.cellCountsBuffer,
       this.totalCellCount
-    )().compute(this.totalCellCount);
-    await this.renderer.computeAsync(resetCalculationCompute);
+    )().compute(this.totalCellCount));
+    this.pendingPasses.push(resetCalculationCompute);
   }
 
-  private async computeCellIndices() {
-    const cellIndicesCompute = computeCellIndicesPass(
+  private computeCellIndices() {
+    const cellIndicesCompute = this.kernel("cellIndicesCompute", () => computeCellIndicesPass(
       this.cellIndicesBuffer,
       this.cellCountsBuffer,
       this.positionsBuffer,
@@ -189,21 +215,22 @@ export class Particles {
       this.yMinCoord,
       this.zMinCoord,
       this.particleCount
-    )().compute(this.particleCount);
-    await this.renderer.computeAsync(cellIndicesCompute);
+    )().compute(this.particleCount));
+    this.pendingPasses.push(cellIndicesCompute);
   }
 
-  private async computeCellStartIndices() {
-    const cellStartIndicesCompute = computeCellStartIndicesPass(
-      this.cellStartIndicesBuffer,
-      this.cellCountsBuffer,
-      this.totalCellCount
-    )().compute(1);
-    await this.renderer.computeAsync(cellStartIndicesCompute);
+  private computeCellStartIndices() {
+    const blocks = Math.ceil(this.totalCellCount / CELL_SCAN_BLOCK_SIZE);
+    this.pendingPasses.push(this.kernel("cellBlockSums", () => computeCellBlockSumsPass(
+      this.cellCountsBuffer, this.cellBlockSumsBuffer, this.totalCellCount
+    )().compute(blocks)));
+    this.pendingPasses.push(this.kernel("cellStartIndices", () => computeBlockedCellStartsPass(
+      this.cellStartIndicesBuffer, this.cellCountsBuffer, this.cellBlockSumsBuffer, this.totalCellCount
+    )().compute(blocks)));
   }
 
-  private async computeReorderParticle() {
-    const reorderParticleCompute = computeReorderParticlePass(
+  private computeReorderParticle() {
+    const reorderParticleCompute = this.kernel("reorderParticleCompute", () => computeReorderParticlePass(
       this.cellIndicesBuffer,
       this.cellStartIndicesBuffer,
       this.offsetsBuffer,
@@ -212,23 +239,23 @@ export class Particles {
       this.reorderedPositionsBuffer,
       this.reorderedVelocitiesBuffer,
       this.particleCount
-    )().compute(this.particleCount);
-    await this.renderer.computeAsync(reorderParticleCompute);
+    )().compute(this.particleCount));
+    this.pendingPasses.push(reorderParticleCompute);
   }
 
-  private async computeSwitchBuffers() {
-    const switchBuffersCompute = computeSwitchBuffersPass(
+  private computeSwitchBuffers() {
+    const switchBuffersCompute = this.kernel("switchBuffersCompute", () => computeSwitchBuffersPass(
       this.positionsBuffer,
       this.velocitiesBuffer,
       this.reorderedPositionsBuffer,
       this.reorderedVelocitiesBuffer,
       this.particleCount
-    )().compute(this.particleCount);
-    await this.renderer.computeAsync(switchBuffersCompute);
+    )().compute(this.particleCount));
+    this.pendingPasses.push(switchBuffersCompute);
   }
 
-  private async computeDensity() {
-    const densityCompute = computeDensityPass(
+  private computeDensity() {
+    const densityCompute = this.kernel("densityCompute", () => computeDensityPass(
       this.positionsBuffer,
       this.densitiesBuffer,
       this.cellStartIndicesBuffer,
@@ -245,23 +272,23 @@ export class Particles {
       this.yMinCoord,
       this.zMinCoord,
       this.particleCount
-    )().compute(this.particleCount);
-    await this.renderer.computeAsync(densityCompute);
+    )().compute(this.particleCount));
+    this.pendingPasses.push(densityCompute);
   }
 
-  private async computePressure() {
-    const pressureCompute = computePressurePass(
+  private computePressure() {
+    const pressureCompute = this.kernel("pressureCompute", () => computePressurePass(
       this.densitiesBuffer,
       this.pressuresBuffer,
       this.sphConfig.restDensity,
       this.sphConfig.pressureStiffness,
       this.particleCount
-    )().compute(this.particleCount);
-    await this.renderer.computeAsync(pressureCompute);
+    )().compute(this.particleCount));
+    this.pendingPasses.push(pressureCompute);
   }
 
-  private async computePressureForce() {
-    const pressureForceCompute = computePressureForcePass(
+  private computePressureForce() {
+    const pressureForceCompute = this.kernel("pressureForceCompute", () => computePressureForcePass(
       this.positionsBuffer,
       this.densitiesBuffer,
       this.pressuresBuffer,
@@ -280,12 +307,12 @@ export class Particles {
       this.yMinCoord,
       this.zMinCoord,
       this.particleCount
-    )().compute(this.particleCount);
-    await this.renderer.computeAsync(pressureForceCompute);
+    )().compute(this.particleCount));
+    this.pendingPasses.push(pressureForceCompute);
   }
 
-  private async computeViscosity() {
-    const viscosityCompute = computeViscosityPass(
+  private computeViscosity() {
+    const viscosityCompute = this.kernel("viscosityCompute", () => computeViscosityPass(
       this.positionsBuffer,
       this.velocitiesBuffer,
       this.densitiesBuffer,
@@ -305,12 +332,12 @@ export class Particles {
       this.yMinCoord,
       this.zMinCoord,
       this.particleCount
-    )().compute(this.particleCount);
-    await this.renderer.computeAsync(viscosityCompute);
+    )().compute(this.particleCount));
+    this.pendingPasses.push(viscosityCompute);
   }
 
-  private async computeIntegrate(delta: number) {
-    const integrateCompute = computeIntegratePass(
+  private computeIntegrate(delta: number) {
+    const integrateCompute = this.kernel("integrateCompute", () => computeIntegratePass(
       this.positionsBuffer,
       this.velocitiesBuffer,
       this.pressureForcesBuffer,
@@ -318,46 +345,79 @@ export class Particles {
       this.sphConfig.mass,
       delta,
       this.sphConfig.restitution,
+      this.sphConfig.damping,
       this.boxWidth,
       this.boxHeight,
       this.boxDepth,
+      this.topCollision,
       this.xMin,
       this.particleCount
-    )().compute(this.particleCount);
-    await this.renderer.computeAsync(integrateCompute);
+    )().compute(this.particleCount));
+    this.pendingPasses.push(integrateCompute);
   }
 
   /** A local upward impulse for inspecting splashes without restarting the fluid. */
   public async splash() {
     const impulse = Fn(() => {
-      const position = this.positionsBuffer.element(instanceIndex);
-      const velocity = this.velocitiesBuffer.element(instanceIndex);
-      // Slightly left of the box centre, wherever the piston has put it.
-      const impulseX = this.boxWidth.mul(0.32).add(this.xMin);
-      const distance2 = position.x.sub(impulseX).pow(2).add(position.z.pow(2));
-      const strength = exp(distance2.div(-9));
-      velocity.addAssign(vec3(3, 16, 0).mul(strength));
+      If(instanceIndex.lessThan(this.particleCount), () => {
+        const position = this.positionsBuffer.element(instanceIndex);
+        const velocity = this.velocitiesBuffer.element(instanceIndex);
+        // Slightly left of the box centre, wherever the piston has put it.
+        const impulseX = this.boxWidth.mul(0.32).add(this.xMin);
+        const distance2 = position.x.sub(impulseX).pow(2).add(position.z.pow(2));
+        const strength = exp(distance2.div(-9));
+        velocity.addAssign(vec3(3, 16, 0).mul(strength));
+      });
     })().compute(this.particleCount);
     await this.renderer.computeAsync(impulse);
     impulse.dispose();
   }
 
   public async compute() {
+    const configKey = JSON.stringify(this.sphConfig);
+    if (configKey !== this.kernelConfig) {
+      this.clearKernels();
+      this.spatialDataValid = false;
+      this.kernelConfig = configKey;
+    }
     // Sub-stepping keeps the stiff pressure solve stable: one full-dt step
     // leaves permanent particle jitter that never lets the pool calm down.
-    const substeps = 2;
+    const substeps = this.sphConfig.substeps;
     for (let step = 0; step < substeps; step++) {
-      await this.computeResetCalculation();
-      await this.computeCellIndices();
-      await this.computeCellStartIndices();
-      await this.computeReorderParticle();
-      await this.computeSwitchBuffers();
-      await this.computeDensity();
-      await this.computePressure();
-
-      await this.computePressureForce();
-      await this.computeViscosity();
-      await this.computeIntegrate(this.sphConfig.delta / substeps);
+      this.prepareSpatialData();
+      this.computePressure();
+      this.computePressureForce();
+      this.computeViscosity();
+      this.computeIntegrate(this.sphConfig.delta / substeps);
+      this.spatialDataValid = false;
     }
+    // Keep current positions/density available to whitewater and the next tick.
+    this.prepareSpatialData();
+    this.flushPasses();
+  }
+
+  private prepareSpatialData() {
+    if (this.spatialDataValid) return;
+    this.computeResetCalculation();
+    this.computeCellIndices();
+    this.computeCellStartIndices();
+    this.computeReorderParticle();
+    this.computeSwitchBuffers();
+    this.computeDensity();
+    this.spatialDataValid = true;
+  }
+
+  private flushPasses() {
+    if (this.pendingPasses.length === 0) return;
+    // One ordered GPU submission; storage dependencies remain dispatch barriers.
+    this.renderer.compute(this.pendingPasses);
+    this.pendingPasses = [];
+  }
+
+  public async refreshSpatialData() {
+    // Public callers may have written positions directly (GPU fixtures, emitters).
+    this.spatialDataValid = false;
+    this.prepareSpatialData();
+    this.flushPasses();
   }
 }
