@@ -65,7 +65,10 @@ export class WaterRenderer {
     const dropletScale = clamp(particles.getDensitiesBuffer().toAttribute().div(0.5), 0.45, 1);
     this.depthMaterial.positionNode = positionLocal.mul(dropletScale)
       .add(particles.getPositionsBuffer().toAttribute());
-    this.depthMaterial.fragmentNode = vec4(positionView.z.negate(), 0, 0, 1);
+    // Pack an isolated-drop normal into the unused depth channels. Its length
+    // is the isolation weight; dense water keeps the reconstructed surface.
+    const isolation = float(1).sub(smoothstep(0.25, 0.65, particles.getDensitiesBuffer().toAttribute()));
+    this.depthMaterial.fragmentNode = vec4(positionView.z.negate(), normalView.normalize().mul(isolation));
     this.depthMaterial.toneMapped = false;
     this.mesh = new THREE.InstancedMesh(this.geometry, this.depthMaterial, particles.particleCount);
     this.mesh.frustumCulled = false;
@@ -88,7 +91,8 @@ export class WaterRenderer {
     this.blurMaterial.depthWrite = false;
     this.blurMaterial.toneMapped = false;
     this.blurMaterial.fragmentNode = Fn(() => {
-      const center = this.input.sample(uv()).r.toVar();
+      const centerData = this.input.sample(uv()).toVar();
+      const center = centerData.r;
       const result = float(0).toVar();
       If(center.greaterThan(0), () => {
         const sum = float(0).toVar();
@@ -105,11 +109,14 @@ export class WaterRenderer {
             weights.addAssign(weight);
           });
         }
-        result.assign(sum.div(max(weights, 0.00001)));
+        // Small detached spheres must not be flattened by the fluid filter.
+        const isolation = clamp(centerData.gba.length(), 0, 1);
+        result.assign(mix(sum.div(max(weights, 0.00001)), center, isolation));
       });
-      return vec4(result, 0, 0, 1);
+      return vec4(result, centerData.gba);
     })();
 
+    const particleSurface = texture(this.depthTarget.texture);
     const surface = texture(this.smoothTarget.texture);
     // Manual bilinear depth sampling works even without float32-filterable.
     // Keep the original mask at silhouettes so empty pixels never pull depth to zero.
@@ -200,8 +207,16 @@ export class WaterRenderer {
       // Isolated droplet pixels have no valid neighbours: the cross product
       // degenerates and normalize() would return NaN (visible as black dots).
       const normalRaw = tangentY.cross(tangentX).toVar();
-      const normal = normalRaw.dot(normalRaw).greaterThan(1e-12)
-        .select(normalRaw.normalize(), view).toVar();
+      const reconstructed = normalRaw.div(max(normalRaw.length(), 1e-6));
+      const packedNormal = particleSurface.sample(coord).gba.toVar();
+      const isolation = clamp(packedNormal.length(), 0, 1);
+      const particleNormal = packedNormal.div(max(isolation, 1e-6));
+      // Across separate surfaces a finite difference is not a valid tangent.
+      // Prefer the actual particle normal for detached drops, before computing
+      // Fresnel/refraction; never suppress the physical reflection itself.
+      const surfaceNormal = normalRaw.dot(normalRaw).greaterThan(1e-12).select(reconstructed, view);
+      const blendedNormal = mix(surfaceNormal, particleNormal, isolation).toVar();
+      const normal = blendedNormal.div(max(blendedNormal.length(), 1e-6)).toVar();
       const thickness = clamp(opticalThickness.sample(coord).r, 0, 20).toVar();
       const incident = view.negate();
       const refracted = refract(incident, normal, 1 / 1.333);

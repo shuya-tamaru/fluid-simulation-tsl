@@ -89,3 +89,11 @@ state affect results. Rendering itself remains a significant part of the cost.
 
 - Open `/tests/boundaries.html` to check live top-collision toggling for fluid and
   whitewater while keeping floor and side collisions enabled.
+
+Detached droplets preserve their unsmoothed depth and interpolated sphere normals.
+A density-based weight (0.25–0.65) blends back into reconstructed fluid normals;
+the weight and normal reuse the existing depth target's unused channels. This
+avoids flattening small drops with the surface filter and deriving their Fresnel
+reflection from a distorted depth slope. Physical grazing-angle reflections remain.
+Open `/tests/droplets.html` for a static visual check of isolated drops, overlapping
+drops, and a dense cluster in Surface and Normals views.
